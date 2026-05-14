@@ -135,7 +135,7 @@ export default function Home() {
           style={{ animationDelay: "1.3s" }}
         >
           <p className="text-2xl text-white font-heading font-black tracking-[0.2em] uppercase">
-            Dismanet
+            Muugo
           </p>
           {!(process.env.NEXT_PUBLIC_MAINTENANCE_MODE === 'true' || process.env.VERCEL_ENV === 'production') ? (
             <div className="mt-8">
