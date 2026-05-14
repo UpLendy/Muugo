@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export default function Home() {
   return (
     <main className="relative flex flex-1 flex-col items-center justify-center px-6 py-12 overflow-hidden bg-black selection:bg-[#eb0028] selection:text-white">
@@ -48,22 +50,16 @@ export default function Home() {
             <div className="absolute inset-0 rounded-full border border-[#eb0028]/30 animate-spin-slow" />
             
             {/* Inner box holding the icon */}
-            <div className="bg-[#111] border border-white/5 shadow-[0_0_50px_rgba(235,0,40,0.15)] p-8 rounded-full flex items-center justify-center">
-              <svg
-                viewBox="0 0 120 120"
-                className="w-16 h-16 sm:w-20 sm:h-20"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* White D outer shape */}
-                <path d="M25 15 H65 C 95 15, 115 35, 115 60 C 115 85, 95 105, 65 105 H25 C 10 105, 10 90, 10 90 V 30 C 10 15, 25 15, 25 15 Z" fill="white" />
-                {/* Inner Cutout */}
-                <path d="M45 45 H60 C 70 45, 75 50, 75 60 C 75 70, 70 75, 60 75 H45 V 45 Z" fill="black" />
-                {/* Blue Accent (Small detail) */}
-                <path d="M25 60 A 20 20 0 0 0 45 80 V 60 Z" fill="#658cff" />
-                {/* Red Accent */}
-                <path d="M45 80 A 20 20 0 0 0 65 100 H 45 Z" fill="#eb0028" />
-              </svg>
+            <div className="bg-[#eb0028] border border-white/10 shadow-[0_0_50px_rgba(235,0,40,0.3)] p-1 rounded-full flex items-center justify-center overflow-hidden">
+              <Image 
+                src="/logo-muugo.jpeg" 
+                alt="Muugo Logo" 
+                width={120} 
+                height={120} 
+                priority
+                sizes="(max-width: 640px) 96px, 128px"
+                className="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-full"
+              />
             </div>
           </div>
         </div>
