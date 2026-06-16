@@ -30,9 +30,6 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-<<<<<<< Updated upstream
-      <body className="min-h-full flex flex-col">{children}</body>
-=======
       <body className="min-h-full flex flex-col noise-overlay bg-neutral-50 text-neutral-900 selection:bg-[#eb0028] selection:text-white">
         <QueryProvider>
           <ProtectedRoute>
@@ -40,7 +37,6 @@ export default function RootLayout({
           </ProtectedRoute>
         </QueryProvider>
       </body>
->>>>>>> Stashed changes
     </html>
   );
 }
