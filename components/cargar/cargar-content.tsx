@@ -17,17 +17,17 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useAuthStore } from "@/store/auth-store";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { orderService } from "@/services/order.service";
+import { sellerBalanceService } from "@/services/sellerBalance.service";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 const loadMethods = [
-  { id: "pse", label: "Transferencia", icon: Globe, logo: "pse" },
+  { id: "133", label: "Transferencia", icon: Globe, logo: "pse" },
   { id: "bancolombia", label: "Bancolombia", logo: "bancolombia", barLabel: "Directo al banco" },
-  { id: "nequi", label: "Nequi", logo: "nequi", barLabel: "Notificación al ..." },
-  { id: "daviplata", label: "Daviplata", logo: "daviplata", barLabel: "Notificación al ..." },
+  { id: "130", label: "Nequi", logo: "nequi", barLabel: "Notificación al ..." },
+  { id: "131", label: "Daviplata", logo: "daviplata", barLabel: "Notificación al ..." },
   { id: "transfiya", label: "Transfiya", icon: Zap, logo: "transfiya", barLabel: "Notificación al ..." },
   { id: "qr", label: "QR", icon: QrCode, barLabel: "Notificación al ..." },
   { id: "efectivo", label: "Efectivo", icon: Banknote },
@@ -53,45 +53,34 @@ export function CargarContent() {
   const user = useAuthStore(state => state.user);
 
   // Obtener últimos pagos
-  const { data: ordersData, isLoading: isLoadingOrders } = useQuery({
-    queryKey: ['payments', user?.id],
-    queryFn: () => orderService.getOrders({ limit: 5 }),
+  const { data: topupsData, isLoading: isLoadingOrders } = useQuery({
+    queryKey: ['topups', user?.id],
+    queryFn: () => sellerBalanceService.getTopups({ limit: 5 }),
     enabled: !!user?.id,
   });
 
-  const orders = Array.isArray(ordersData) ? ordersData : (ordersData?.items || []);
+  const topups = Array.isArray(topupsData) ? topupsData : (topupsData?.data || []);
 
   const payMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id) throw new Error("Usuario no encontrado");
-      const numAmount = parseInt(amount.replace(/\D/g, ''), 10);
+      if (!selectedMethod) throw new Error("Método no seleccionado");
       
-      const orderRes = await orderService.createOrder({
-        storeId: "default",
-        note: `Carga de saldo vía ${selectedMethod}`,
-        items: [{
-          storeProductId: "recarga-saldo",
-          quantity: 1,
-          amount: numAmount,
-          deliveryData: {
-            method: selectedMethod,
-            bank, personType, docType, docNumber, name, email, phone
-          }
-        }]
-      });
-      const order = orderRes.data;
-
-      const paymentRes = await orderService.initiatePayment(order.id, {
-        provider: 'pay',
-        returnUrl: `${window.location.origin}/cargar/resultado`,
-        urlCommerce: window.location.origin
+      const numAmount = parseInt(amount.replace(/\D/g, ''), 10);
+      const methodIdNum = parseInt(selectedMethod, 10);
+      
+      const paymentRes = await sellerBalanceService.initiateTopup({
+        amountCents: numAmount * 100, // asumiendo que el numAmount era pesos, lo enviamos en centavos
+        paymentMethodId: isNaN(methodIdNum) ? undefined : methodIdNum,
+        cellphone: phone || undefined,
+        returnUrl: `${window.location.origin}/cargar/resultado`
       });
 
       return paymentRes.data;
     },
     onSuccess: (data) => {
-      if (data?.paymentUrl) {
-        window.location.href = data.paymentUrl;
+      if (data?.url) {
+        window.location.href = data.url;
       } else {
         alert("Carga iniciada exitosamente.");
         setAmount("");
@@ -317,12 +306,12 @@ export function CargarContent() {
                 ) : (
                   <div className="space-y-6">
                     {/* INFO TEXTS */}
-                    {selectedMethod === "pse" && (
+                    {selectedMethod === "133" && (
                       <p className="text-sm text-neutral-600">El pago va a ser realizado a través del Proveedor de Servicios Electrónicos PSE.</p>
                     )}
-                    {(selectedMethod === "nequi" || selectedMethod === "daviplata" || selectedMethod === "qr") && (
+                    {(selectedMethod === "130" || selectedMethod === "131" || selectedMethod === "qr") && (
                       <p className="text-sm text-neutral-600">
-                        <span className="font-bold">Recuerda:</span> Tu transacción está siendo procesada a través de PSE. Al finalizar te saldrá una pantalla "Inscribe tu comercio" marca "Acepto" en el botón para que puedas evitar varios pasos.
+                        <span className="font-bold">Recuerda:</span> Tu transacción está siendo procesada. Al finalizar te saldrá una pantalla "Inscribe tu comercio" marca "Acepto" en el botón para que puedas evitar varios pasos.
                       </p>
                     )}
                     {selectedMethod === "transfiya" && (
@@ -331,102 +320,24 @@ export function CargarContent() {
                       </p>
                     )}
 
-                    {/* DYNAMIC FORMS */}
-                    {(selectedMethod === "pse" || selectedMethod === "bancolombia") ? (
-                      <div className="grid grid-cols-2 gap-4">
-                        {selectedMethod === "pse" && (
-                          <div className="col-span-1">
-                            <label className="block text-sm text-neutral-600 mb-1">Banco *</label>
-                            <select 
-                              className="w-full p-3 border border-red-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white text-sm"
-                              value={bank}
-                              onChange={e => setBank(e.target.value)}
-                            >
-                              <option value="">Selecciona una opción</option>
-                              {bankOptions.map(b => <option key={b} value={b}>{b}</option>)}
-                            </select>
-                            {!bank && <p className="text-red-500 text-[10px] mt-1">El campo banco es requerido</p>}
-                          </div>
-                        )}
-                        <div className={selectedMethod === "bancolombia" ? "col-span-1" : "col-span-1"}>
-                          <label className="block text-sm text-neutral-600 mb-1">Tipo de persona *</label>
-                          <select 
-                            className="w-full p-3 border border-green-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 bg-white text-sm"
-                            value={personType}
-                            onChange={e => setPersonType(e.target.value)}
-                          >
-                            {personTypes.map(p => <option key={p} value={p}>{p}</option>)}
-                          </select>
-                        </div>
-                        <div className="col-span-1">
-                          <label className="block text-sm text-neutral-600 mb-1">Tipo *</label>
-                          <select 
-                            className="w-full p-3 border border-green-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 bg-white text-sm"
-                            value={docType}
-                            onChange={e => setDocType(e.target.value)}
-                          >
-                            {documentTypes.map(d => <option key={d} value={d}>{d}</option>)}
-                          </select>
-                        </div>
-                        <div className="col-span-1">
-                          <label className="block text-sm text-neutral-600 mb-1">Documento *</label>
-                          <input 
-                            type="text" 
-                            className="w-full p-3 border border-green-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 bg-white text-sm"
-                            value={docNumber}
-                            onChange={e => setDocNumber(e.target.value)}
-                            placeholder="1027210235"
-                          />
-                        </div>
-                        <div className="col-span-1">
-                          <label className="block text-sm text-neutral-600 mb-1">Nombre *</label>
-                          <input 
-                            type="text" 
-                            className="w-full p-3 border border-green-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 bg-white text-sm"
-                            value={name}
-                            onChange={e => setName(e.target.value)}
-                            placeholder="Juan Felipe Lopez Sana"
-                          />
-                        </div>
-                        <div className="col-span-1">
-                          <label className="block text-sm text-neutral-600 mb-1">Correo *</label>
-                          <input 
-                            type="email" 
-                            className="w-full p-3 border border-green-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 bg-white text-sm truncate"
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                            placeholder="lopezsanabriajuanfelipe..."
-                          />
-                        </div>
-                        <div className="col-span-1">
-                          <label className="block text-sm text-neutral-600 mb-1">Celular *</label>
-                          <input 
-                            type="text" 
-                            className="w-full p-3 border border-green-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 bg-white text-sm"
-                            value={phone}
-                            onChange={e => setPhone(e.target.value)}
-                            placeholder="3015667793"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-sm text-neutral-600 mb-2">Numero de teléfono *</label>
-                        <input 
-                          type="text" 
-                          placeholder="312 000 0000"
-                          className="w-full max-w-sm p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white shadow-sm"
-                          value={phone}
-                          onChange={e => setPhone(e.target.value)}
-                        />
-                      </div>
+                    {/* FORM */}
+                    <div>
+                      <label className="block text-sm text-neutral-600 mb-2">Número de teléfono celular *</label>
+                      <input 
+                        type="text" 
+                        placeholder="312 000 0000"
+                        className="w-full max-w-sm p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white shadow-sm"
+                        value={phone}
+                        onChange={e => setPhone(e.target.value)}
+                      />
+                    </div>
                     )}
 
                     {/* ALERTS */}
-                    <div className="bg-black text-white p-5 rounded-2xl text-xs leading-relaxed max-w-lg">
+                    <div className="bg-black text-white p-5 rounded-2xl text-xs leading-relaxed max-w-lg mt-6">
                       {selectedMethod === "transfiya" ? (
                         <>*Montos iguales o superiores a <span className="font-bold">$20.000</span>, no tiene costo adicional, en cambio si es inferior, la entidad te descuenta <span className="font-bold">$500</span>.</>
-                      ) : (selectedMethod === "nequi" || selectedMethod === "daviplata" || selectedMethod === "qr") ? (
+                      ) : (selectedMethod === "130" || selectedMethod === "131" || selectedMethod === "qr") ? (
                         <>*Montos superiores a <span className="font-bold">$20.000</span>, no tiene costo adicional, en cambio si es inferior, la entidad te descuenta <span className="font-bold">$500</span>.</>
                       ) : (
                         <>*Montos superiores a <span className="font-bold">$50.000</span>, no tienen costo adicional, en cambio si es inferior, la entidad te descuenta <span className="font-bold">$500</span>.</>
@@ -436,7 +347,7 @@ export function CargarContent() {
                     <div className="pt-4">
                       <button
                         onClick={() => payMutation.mutate()}
-                        disabled={!amount || amount === "0" || (selectedMethod === "pse" && !bank) || payMutation.isPending}
+                        disabled={!amount || amount === "0" || payMutation.isPending}
                         className="px-8 py-3 bg-[#00d2ff] text-white font-bold rounded-full hover:bg-opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px]"
                       >
                         {payMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Cargar"}
