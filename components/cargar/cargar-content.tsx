@@ -55,11 +55,54 @@ export function CargarContent() {
   // Obtener últimos pagos
   const { data: ordersData, isLoading: isLoadingOrders } = useQuery({
     queryKey: ['payments', user?.id],
-    queryFn: () => orderService.getOrders(user!.id, { limit: 5 }),
+    queryFn: () => orderService.getOrders({ limit: 5 }),
     enabled: !!user?.id,
   });
 
   const orders = Array.isArray(ordersData) ? ordersData : (ordersData?.items || []);
+
+  const payMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) throw new Error("Usuario no encontrado");
+      const numAmount = parseInt(amount.replace(/\D/g, ''), 10);
+      
+      const orderRes = await orderService.createOrder({
+        storeId: "default",
+        note: `Carga de saldo vía ${selectedMethod}`,
+        items: [{
+          storeProductId: "recarga-saldo",
+          quantity: 1,
+          amount: numAmount,
+          deliveryData: {
+            method: selectedMethod,
+            bank, personType, docType, docNumber, name, email, phone
+          }
+        }]
+      });
+      const order = orderRes.data;
+
+      const paymentRes = await orderService.initiatePayment(order.id, {
+        provider: 'pay',
+        returnUrl: `${window.location.origin}/cargar/resultado`,
+        urlCommerce: window.location.origin
+      });
+
+      return paymentRes.data;
+    },
+    onSuccess: (data) => {
+      if (data?.paymentUrl) {
+        window.location.href = data.paymentUrl;
+      } else {
+        alert("Carga iniciada exitosamente.");
+        setAmount("");
+        setSelectedMethod(null);
+      }
+    },
+    onError: (error) => {
+      console.error(error);
+      alert("Hubo un error al procesar la carga.");
+    }
+  });
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\D/g, '');
@@ -392,10 +435,11 @@ export function CargarContent() {
 
                     <div className="pt-4">
                       <button
-                        disabled={!amount || amount === "0" || (selectedMethod === "pse" && !bank)}
+                        onClick={() => payMutation.mutate()}
+                        disabled={!amount || amount === "0" || (selectedMethod === "pse" && !bank) || payMutation.isPending}
                         className="px-8 py-3 bg-[#00d2ff] text-white font-bold rounded-full hover:bg-opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px]"
                       >
-                        Cargar
+                        {payMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Cargar"}
                       </button>
                     </div>
 

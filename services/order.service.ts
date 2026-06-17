@@ -1,30 +1,54 @@
 import { apiClient } from '@/lib/api-client';
 
+export interface OrderItem {
+  storeProductId: string;
+  quantity: number;
+  amount?: number;
+  deliveryData: Record<string, any>;
+}
+
 export const orderService = {
-  async createOrder(userId: string, orderData: Record<string, any>) {
-    const { data } = await apiClient.post(`/users/${userId}/orders`, orderData);
+  // ÓRDENES
+  async createOrder(body: { storeId: string; items: OrderItem[]; note?: string }) {
+    const { data } = await apiClient.post('/orders', body);
+    return data;
+  },
+  async getOrders(params?: { storeId?: string; status?: string; page?: number; limit?: number }) {
+    const { data } = await apiClient.get('/orders', { params });
+    return data;
+  },
+  async getOrder(orderId: string) {
+    const { data } = await apiClient.get(`/orders/${orderId}`);
+    return data;
+  },
+  async cancelOrder(orderId: string, reason?: string) {
+    const { data } = await apiClient.delete(`/orders/${orderId}`, { data: reason ? { reason } : undefined });
+    return data;
+  },
+  async updateOrderStatus(orderId: string, status: string, reason?: string) {
+    const { data } = await apiClient.patch(`/orders/${orderId}/status`, { status, reason });
     return data;
   },
 
-  async initPayment(userId: string, orderId: string, paymentConfig?: Record<string, any>) {
-    const { data } = await apiClient.post(`/users/${userId}/orders/${orderId}/pay`, paymentConfig || {});
+  // PAGOS
+  async initiatePayment(orderId: string, body: { provider?: 'pay' | 'commerce'; returnUrl?: string; urlCommerce?: string }) {
+    const { data } = await apiClient.post(`/payments/orders/${orderId}/initiate`, body);
     return data;
   },
-
-  async getOrder(userId: string, orderId: string) {
-    const { data } = await apiClient.get(`/users/${userId}/orders/${orderId}`);
+  async getPaymentStatus(reference: string) {
+    const { data } = await apiClient.get(`/payments/status/${reference}`);
     return data;
   },
-
-  async getOrders(userId: string, params?: Record<string, any>) {
-    const { data } = await apiClient.get(`/users/${userId}/orders`, { params });
+  async getPaymentHistory(params?: { page?: number; limit?: number }) {
+    const { data } = await apiClient.get('/payments/history', { params });
     return data;
   },
-
-  async cancelOrder(userId: string, orderId: string, reason?: string) {
-    const { data } = await apiClient.delete(`/users/${userId}/orders/${orderId}`, {
-      data: reason ? { reason } : undefined,
-    });
+  async getPseBanks() {
+    const { data } = await apiClient.get('/payments/pse-banks');
+    return data;
+  },
+  async getTransfiyaBanks(transferType: 'send' | 'receive') {
+    const { data } = await apiClient.get(`/payments/transfiya-banks/${transferType}`);
     return data;
   },
 };

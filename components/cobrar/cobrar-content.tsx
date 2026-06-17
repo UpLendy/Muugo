@@ -42,7 +42,7 @@ export function CobrarContent() {
   // Obtener últimos pagos (órdenes)
   const { data: ordersData, isLoading: isLoadingOrders } = useQuery({
     queryKey: ['payments', user?.id],
-    queryFn: () => orderService.getOrders(user!.id, { limit: 5 }),
+    queryFn: () => orderService.getOrders({ limit: 5 }),
     enabled: !!user?.id,
   });
 
@@ -56,22 +56,26 @@ export function CobrarContent() {
       if (isNaN(numAmount) || numAmount <= 0) throw new Error("Monto inválido");
 
       // 1. Crear la orden
-      const order = await orderService.createOrder(user.id, {
+      const orderRes = await orderService.createOrder({
+        storeId: "default", // Placeholder, idealmente se debe obtener del contexto de la tienda
+        note: `Cobro vía ${selectedMethod}`,
         items: [{
-          productId: "cobro-generico",
+          storeProductId: "cobro-generico",
           quantity: 1,
-          unitPrice: numAmount
-        }],
-        totalAmount: numAmount,
-        shippingAddressId: null
+          amount: numAmount,
+          deliveryData: { method: selectedMethod }
+        }]
       });
+      const order = orderRes.data;
 
       // 2. Iniciar el pago
-      const payment = await orderService.initPayment(user.id, order.id, {
-        method: selectedMethod!
+      const paymentRes = await orderService.initiatePayment(order.id, {
+        provider: 'pay',
+        returnUrl: `${window.location.origin}/cobrar/resultado`,
+        urlCommerce: window.location.origin
       });
 
-      return payment;
+      return paymentRes.data;
     },
     onSuccess: (data) => {
       if (data?.paymentUrl) {

@@ -26,4 +26,9 @@ export const authService = {
     const { data } = await apiClient.patch<User>('/auth/avatar', { avatarUrl });
     return data;
   },
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    const { data } = await apiClient.patch<{ success: boolean; message: string }>('/auth/password', { currentPassword, newPassword });
+    return data;
+  },
 };

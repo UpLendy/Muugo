@@ -7,10 +7,22 @@ import {
   PlusCircle, 
   Calendar,
   MessageCircle,
-  Download
+  Download,
+  Loader2
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { dashboardService } from "@/services/dashboard.service";
 
 export function DashboardContent() {
+  const { data: summaryResponse, isLoading } = useQuery({
+    queryKey: ['dashboardSummary'],
+    queryFn: () => dashboardService.getSummary(),
+  });
+
+  const summary = summaryResponse?.data;
+  const revenueCents = summary?.orders?.revenueCents || 0;
+  const revenueFormatted = new Intl.NumberFormat('es-CO').format(revenueCents / 100);
+
   return (
     <div className="flex flex-1 gap-8 p-8">
       {/* Main Content Area */}
@@ -25,8 +37,9 @@ export function DashboardContent() {
             <div>
               <div className="flex items-center gap-3">
                 <h2 className="text-2xl font-black text-neutral-900">Total ventas</h2>
-                <div className="px-3 py-1 bg-neutral-100 rounded-full text-xs font-bold text-neutral-400 font-mono">
-                  $ 1.234.567
+                <div className="px-3 py-1 bg-neutral-100 rounded-full text-xs font-bold text-neutral-400 font-mono flex items-center gap-2">
+                  {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  $ {revenueFormatted}
                 </div>
               </div>
               <p className="text-sm text-neutral-500">Visualiza tus ventas de la semana hasta el día de ayer</p>

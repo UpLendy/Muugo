@@ -58,6 +58,28 @@ export function CuentaContent() {
   const { user, updateUser } = useAuthStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  const passwordMutation = useMutation({
+    mutationFn: async () => {
+      if (newPassword !== confirmPassword) throw new Error("Las contraseñas no coinciden");
+      await authService.changePassword(currentPassword, newPassword);
+    },
+    onSuccess: () => {
+      alert("Contraseña actualizada exitosamente.");
+      setShowPasswordForm(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    },
+    onError: (error: any) => {
+      alert(error?.response?.data?.message || error.message || "Error al cambiar la contraseña");
+    }
+  });
+
   // Obtener la tienda (punto de venta) del usuario para mostrar el ID
   const { data: store } = useQuery({
     queryKey: ['myStore', user?.id],
@@ -206,34 +228,77 @@ export function CuentaContent() {
         {/* List Items */}
         <div className="space-y-3">
           {(activeTab === "Mi perfil" ? profileItems : configItems).map((item, index) => (
-            <button
-              key={index}
-              className="w-full bg-white border border-neutral-50 rounded-2xl p-5 flex items-center gap-6 hover:border-neutral-200 transition-all group hover:shadow-lg hover:shadow-neutral-100"
-            >
-              <div className="w-12 h-12 rounded-xl bg-neutral-50 flex items-center justify-center text-neutral-400 group-hover:bg-[#eb0028]/5 group-hover:text-[#eb0028] transition-colors shrink-0">
-                <item.icon className="w-6 h-6" />
-              </div>
-              
-              <div className="flex-1 text-left">
-                <p className="font-bold text-neutral-800 text-lg">{item.label}</p>
-                <p className="text-xs text-neutral-400 font-medium leading-relaxed">{item.sub}</p>
-              </div>
+            <div key={index} className="flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  if (item.label === "Contraseña") setShowPasswordForm(!showPasswordForm);
+                }}
+                className="w-full bg-white border border-neutral-50 rounded-2xl p-5 flex items-center gap-6 hover:border-neutral-200 transition-all group hover:shadow-lg hover:shadow-neutral-100"
+              >
+                <div className="w-12 h-12 rounded-xl bg-neutral-50 flex items-center justify-center text-neutral-400 group-hover:bg-[#eb0028]/5 group-hover:text-[#eb0028] transition-colors shrink-0">
+                  <item.icon className="w-6 h-6" />
+                </div>
+                
+                <div className="flex-1 text-left">
+                  <p className="font-bold text-neutral-800 text-lg">{item.label}</p>
+                  <p className="text-xs text-neutral-400 font-medium leading-relaxed">{item.sub}</p>
+                </div>
 
-              <div className="flex items-center gap-4 shrink-0">
-                {item.progress !== undefined && (
-                   <div className="flex items-center gap-3">
-                     <div className="w-10 h-10 rounded-full border-2 border-neutral-100 flex items-center justify-center text-[10px] font-black text-neutral-300 relative overflow-hidden">
-                        <div 
-                          className="absolute bottom-0 left-0 right-0 bg-[#00d2ff]/20 transition-all" 
-                          style={{ height: `${item.progress}%` }}
-                        />
-                        {item.progress}%
+                <div className="flex items-center gap-4 shrink-0">
+                  {item.progress !== undefined && (
+                     <div className="flex items-center gap-3">
+                       <div className="w-10 h-10 rounded-full border-2 border-neutral-100 flex items-center justify-center text-[10px] font-black text-neutral-300 relative overflow-hidden">
+                          <div 
+                            className="absolute bottom-0 left-0 right-0 bg-[#00d2ff]/20 transition-all" 
+                            style={{ height: `${item.progress}%` }}
+                          />
+                          {item.progress}%
+                       </div>
                      </div>
-                   </div>
-                )}
-                <ChevronRight className="w-6 h-6 text-neutral-300 group-hover:text-neutral-800 transition-colors" />
-              </div>
-            </button>
+                  )}
+                  <ChevronRight className={cn("w-6 h-6 text-neutral-300 group-hover:text-neutral-800 transition-colors", item.label === "Contraseña" && showPasswordForm ? "rotate-90" : "")} />
+                </div>
+              </button>
+              
+              {item.label === "Contraseña" && showPasswordForm && (
+                <div className="bg-neutral-50 rounded-2xl p-6 border border-neutral-200 space-y-4 animate-in fade-in slide-in-from-top-2">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Contraseña actual</label>
+                    <input 
+                      type="password" 
+                      value={currentPassword}
+                      onChange={e => setCurrentPassword(e.target.value)}
+                      className="w-full p-3 rounded-xl border border-neutral-200 focus:outline-none focus:border-[#eb0028] bg-white text-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Nueva contraseña</label>
+                    <input 
+                      type="password" 
+                      value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)}
+                      className="w-full p-3 rounded-xl border border-neutral-200 focus:outline-none focus:border-[#eb0028] bg-white text-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Confirmar contraseña</label>
+                    <input 
+                      type="password" 
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      className="w-full p-3 rounded-xl border border-neutral-200 focus:outline-none focus:border-[#eb0028] bg-white text-sm"
+                    />
+                  </div>
+                  <button 
+                    onClick={() => passwordMutation.mutate()}
+                    disabled={!currentPassword || !newPassword || !confirmPassword || passwordMutation.isPending}
+                    className="w-full py-3 bg-[#eb0028] text-white font-bold rounded-xl hover:bg-opacity-90 transition-all disabled:opacity-50"
+                  >
+                    {passwordMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Guardar contraseña"}
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       </div>

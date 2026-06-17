@@ -13,7 +13,7 @@ import {
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useAuthStore } from "@/store/auth-store";
-import { orderService } from "@/services/order.service";
+import { reportsService } from "@/services/reports.service";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -33,14 +33,25 @@ export function ReportesContent() {
     
     setIsGenerating(true);
     try {
-      // Simulamos la descarga/generación de un reporte llamando a la API
-      const response = await orderService.getOrders(user.id, { limit: 50 });
+      // Mapeamos el tab activo al tipo de reporte esperado por la API
+      const tabToTypeMap: Record<string, any> = {
+        "Ventas": "sales",
+        "Compras": "payments",
+        "Extracto": "extracto",
+        "Pagos": "payments",
+        "Traslados": "traslados",
+        "Reversas": "reversas",
+        "Consumido": "consumido"
+      };
       
-      // En un entorno real, aquí podríamos convertir a CSV y hacer un trigger de descarga
+      const reportType = tabToTypeMap[activeTab] || "sales";
+
+      // Disparar la descarga
+      reportsService.downloadReport(reportType, { from: "2026-04-04", to: "2026-05-04" });
+      
       setTimeout(() => {
-        alert(`Reporte de ${activeTab} generado exitosamente. Se incluyeron ${response.items.length} registros.`);
         setIsGenerating(false);
-      }, 1000); // Simulando delay de procesamiento
+      }, 1000); // Simulando delay de UI
       
     } catch (error) {
       console.error(error);

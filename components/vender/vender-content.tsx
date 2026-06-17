@@ -22,8 +22,8 @@ import {
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { useQuery } from "@tanstack/react-query";
-import { productService } from "@/services/product.service";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { catalogService } from "@/services/catalog.service";
 import { orderService } from "@/services/order.service";
 import { useAuthStore } from "@/store/auth-store";
 
@@ -73,12 +73,12 @@ export function VenderContent() {
   // -- DATA FETCHING --
   const { data: productsData, isLoading: isLoadingProducts } = useQuery({
     queryKey: ['products'],
-    queryFn: () => productService.getProducts(),
+    queryFn: () => catalogService.getProducts(),
   });
 
   const { data: ordersData, isLoading: isLoadingOrders } = useQuery({
     queryKey: ['orders', user?.id],
-    queryFn: () => orderService.getOrders(user!.id, { limit: 5 }),
+    queryFn: () => orderService.getOrders({ limit: 5 }),
     enabled: !!user?.id,
   });
 
@@ -93,6 +93,41 @@ export function VenderContent() {
   }, [products, selectedBrand]);
 
   const activeCategory = CATEGORIES.find(c => c.id === activeTab);
+
+  const saleMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedProductSku) throw new Error("Debes seleccionar un producto");
+      const product = products.find((p: any) => p.sku === selectedProductSku);
+      if (!product) throw new Error("Producto no encontrado");
+      
+      const orderRes = await orderService.createOrder({
+        storeId: "default", 
+        note: `Venta de ${product.name}`,
+        items: [{
+          storeProductId: product.id,
+          quantity: 1,
+          amount: product.priceCents,
+          deliveryData: {
+            phone,
+            email
+          }
+        }]
+      });
+      return orderRes.data;
+    },
+    onSuccess: () => {
+      alert("Venta procesada exitosamente");
+      setView('categories');
+      setPhone("");
+      setEmail("");
+      setSelectedProductSku(null);
+      setSelectedBrand(null);
+    },
+    onError: (error) => {
+      console.error(error);
+      alert("Error procesando la venta");
+    }
+  });
 
   // -- HANDLERS --
   const openCategoryModal = (categoryId: string) => {
@@ -245,10 +280,11 @@ export function VenderContent() {
 
               <div className="mt-8">
                  <button 
-                    disabled={!selectedProductSku || !phone || !email}
-                    className="px-8 py-3 bg-[#00c9cc] text-white font-bold rounded-full hover:bg-opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => saleMutation.mutate()}
+                    disabled={!selectedProductSku || !phone || !email || saleMutation.isPending}
+                    className="px-8 py-3 bg-[#00c9cc] text-white font-bold rounded-full hover:bg-opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed min-w-[150px]"
                  >
-                    Continuar Venta
+                    {saleMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Continuar Venta"}
                  </button>
               </div>
             </div>
