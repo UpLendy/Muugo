@@ -6,6 +6,7 @@ import { useAuthStore } from "@/store/auth-store";
 import { useQuery } from "@tanstack/react-query";
 import { storeService } from "@/services/store.service";
 import { payoutService } from "@/services/payout.service";
+import { sellerBalanceService } from "@/services/sellerBalance.service";
 
 interface HeaderProps {
   showBalances?: boolean;
@@ -22,8 +23,15 @@ export function Header({ showBalances = false }: HeaderProps) {
     retry: false, // No reintentar si da 404 (no tiene tienda)
   });
 
-  // Obtener el balance de la tienda
-  const { data: balanceData } = useQuery({
+  // Obtener el balance de la billetera virtual (Saldo para compras/ventas)
+  const { data: sellerBalanceData } = useQuery({
+    queryKey: ['sellerBalance', user?.id],
+    queryFn: () => sellerBalanceService.getBalance(),
+    enabled: !!user?.id && user?.roles?.includes('seller'),
+  });
+
+  // Obtener el balance de la tienda (Ganancias y cobros)
+  const { data: storeBalanceData } = useQuery({
     queryKey: ['storeBalance', store?.id],
     queryFn: () => payoutService.getBalance(store!.id),
     enabled: !!store?.id,
@@ -33,9 +41,18 @@ export function Header({ showBalances = false }: HeaderProps) {
     return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(amount);
   };
 
-  const availableBalance = balanceData?.available || 0;
-  // Asumiendo que el balance pendiente o total sirve para ganancias en este layout
-  const pendingBalance = balanceData?.pending || 0; 
+  // Saldo disponible (SellerBalance, devuelve centavos, así que dividimos)
+  const availableBalance = sellerBalanceData 
+    ? Number(sellerBalanceData.data?.availableCents ?? sellerBalanceData.availableCents ?? 0) / 100 
+    : 0;
+    
+  // Ganancias (StoreBalance, devuelve centavos, así que dividimos)
+  const pendingBalance = storeBalanceData 
+    ? Number(
+        storeBalanceData.data?.availableCents ?? storeBalanceData.availableCents ?? 
+        storeBalanceData.data?.pendingCents ?? storeBalanceData.pendingCents ?? 0
+      ) / 100 
+    : 0; 
 
   return (
     <header className="h-20 bg-white border-b border-neutral-100 flex items-center justify-between px-8 sticky top-0 z-40">

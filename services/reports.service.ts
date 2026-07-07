@@ -1,6 +1,6 @@
 import { apiClient } from '@/lib/api-client';
 
-type ReportType = 'sales' | 'payments' | 'commissions' | 'extracto' | 'reversas' | 'consumido' | 'traslados';
+type ReportType = 'sells' | 'charges' | 'commissions' | 'extracto' | 'traslados';
 
 export const reportsService = {
   async getReport(type: ReportType, params?: { from?: string; to?: string; page?: number; limit?: number }) {

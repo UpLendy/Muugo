@@ -16,8 +16,9 @@ import {
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useAuthStore } from "@/store/auth-store";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { orderService } from "@/services/order.service";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { chargeService } from "@/services/charge.service";
+import { storeService } from "@/services/store.service";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -39,45 +40,55 @@ export function CobrarContent() {
   
   const user = useAuthStore(state => state.user);
 
-  // Obtener últimos pagos (órdenes)
-  const { data: ordersData, isLoading: isLoadingOrders } = useQuery({
-    queryKey: ['payments', user?.id],
-    queryFn: () => orderService.getOrders({ limit: 5 }),
+  // Obtener la tienda del vendedor
+  const { data: storeData } = useQuery({
+    queryKey: ['myStore', user?.id],
+    queryFn: () => storeService.getMyStore(user!.id),
+    enabled: !!user?.id,
+    retry: false,
+  });
+
+  const storeId: string | undefined = storeData?.data?.id ?? storeData?.id;
+
+  const queryClient = useQueryClient();
+
+  // Obtener últimos cobros
+  const { data: chargesData, isLoading: isLoadingCharges } = useQuery({
+    queryKey: ['charges', user?.id],
+    queryFn: () => chargeService.list({ limit: 5 }),
     enabled: !!user?.id,
   });
 
-  const orders = Array.isArray(ordersData) ? ordersData : (ordersData?.items || []);
+  const charges = Array.isArray(chargesData) ? chargesData : (chargesData?.items || chargesData?.data || []);
 
   // Mutación para cobrar
   const payMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id) throw new Error("Usuario no encontrado");
       const numAmount = parseInt(amount.replace(/\D/g, ''), 10);
-      if (isNaN(numAmount) || numAmount <= 0) throw new Error("Monto inválido");
+      if (isNaN(numAmount) || numAmount < 100) throw new Error("El monto mínimo es $100 COP");
 
-      // 1. Crear la orden
-      const orderRes = await orderService.createOrder({
-        storeId: "default", // Placeholder, idealmente se debe obtener del contexto de la tienda
-        note: `Cobro vía ${selectedMethod}`,
-        items: [{
-          storeProductId: "cobro-generico",
-          quantity: 1,
-          amount: numAmount,
-          deliveryData: { method: selectedMethod }
-        }]
-      });
-      const order = orderRes.data;
+      let paymentMethodId: number | undefined = undefined;
+      // Ejemplos de mapeo de IDs (se ajustan según el backend real de Refácil)
+      if (selectedMethod === 'transfiya') paymentMethodId = 155;
+      else if (selectedMethod === 'qr' || selectedMethod === 'bancolombia') paymentMethodId = 248;
 
-      // 2. Iniciar el pago
-      const paymentRes = await orderService.initiatePayment(order.id, {
-        provider: 'pay',
-        returnUrl: `${window.location.origin}/cobrar/resultado`,
-        urlCommerce: window.location.origin
+      const origin = window.location.origin.includes('localhost') 
+        ? window.location.origin.replace('localhost', 'lvh.me') 
+        : window.location.origin;
+
+      const chargeRes = await chargeService.create({
+        amountCents: numAmount * 100, // Enviar en centavos
+        paymentMethodId,
+        cellphone: phone || undefined,
+        description: `Cobro vía ${selectedMethod}`,
+        returnUrl: `${origin}/cobrar/resultado`,
       });
 
-      return paymentRes.data;
+      return chargeRes.data;
     },
     onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['charges'] });
       if (data?.paymentUrl) {
         window.location.href = data.paymentUrl;
       } else {
@@ -367,26 +378,26 @@ export function CobrarContent() {
           </button>
         </div>
 
-        {isLoadingOrders ? (
+        {isLoadingCharges ? (
           <div className="flex-1 flex items-center justify-center">
             <Loader2 className="w-8 h-8 text-[#00d2ff] animate-spin" />
           </div>
-        ) : orders.length > 0 ? (
+        ) : charges.length > 0 ? (
           <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
-            {orders.map((order: any) => (
-              <div key={order.id} className="p-3 rounded-xl border border-neutral-100 flex items-center justify-between hover:bg-neutral-50 transition-colors">
+            {charges.map((charge: any) => (
+              <div key={charge.chargeId || charge.id} className="p-3 rounded-xl border border-neutral-100 flex items-center justify-between hover:bg-neutral-50 transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-cyan-50 text-cyan-500 flex items-center justify-center">
                     <CreditCard className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="font-bold text-neutral-800 text-xs">Cobro #{order.id.slice(0,6)}</p>
-                    <p className="text-[10px] text-neutral-500">{new Date(order.createdAt).toLocaleDateString()}</p>
+                    <p className="font-bold text-neutral-800 text-xs">Cobro #{(charge.chargeId || charge.id).slice(0,6)}</p>
+                    <p className="text-[10px] text-neutral-500">{new Date(charge.createdAt || Date.now()).toLocaleDateString()}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-black text-neutral-800 text-sm">${(order.totalCents / 100).toLocaleString()}</p>
-                  <p className="text-[9px] uppercase font-bold text-neutral-400">{order.status}</p>
+                  <p className="font-black text-neutral-800 text-sm">${((charge.amountCents || 0) / 100).toLocaleString()}</p>
+                  <p className="text-[9px] uppercase font-bold text-neutral-400">{charge.status}</p>
                 </div>
               </div>
             ))}

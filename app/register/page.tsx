@@ -4,6 +4,8 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useMutation } from "@tanstack/react-query";
 import { authService } from "@/services/auth.service";
+import { storeService } from "@/services/store.service";
+import { profileService } from "@/services/profile.service";
 import { useAuthStore } from "@/store/auth-store";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, ArrowRight, AlertCircle, Loader2, User as UserIcon, Phone } from "lucide-react";
@@ -22,8 +24,17 @@ export default function RegisterPage() {
 
   const mutation = useMutation({
     mutationFn: () => authService.register(formData),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       login(data.user, data.token);
+      try {
+        // 1. Crear perfil de vendedor
+        const profileRes = await profileService.createSellerProfile(data.user.id, {});
+        // 2. Usar el sellerId retornado para crear la tienda
+        const sellerId = profileRes?.data?.id ?? profileRes?.id ?? data.user.id;
+        await storeService.createStore(sellerId, {});
+      } catch {
+        console.warn("No se pudo completar la configuración inicial del vendedor");
+      }
       router.push("/");
     },
   });
@@ -128,6 +139,9 @@ export default function RegisterPage() {
                   name="phoneNumber"
                   value={formData.phoneNumber}
                   onChange={handleChange}
+                  maxLength={10}
+                  minLength={10}
+                  pattern="[0-9]{10}"
                   className="block w-full pl-12 pr-4 py-4 bg-neutral-50 border border-neutral-200 rounded-2xl text-neutral-900 focus:outline-none focus:ring-2 focus:ring-[#eb0028]/20 focus:border-[#eb0028] transition-all"
                   placeholder="300 123 4567"
                 />

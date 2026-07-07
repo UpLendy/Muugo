@@ -49,6 +49,10 @@ export function CargarContent() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [documentType, setDocumentType] = useState("CC");
+  const [documentNumber, setDocumentNumber] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [bankId, setBankId] = useState("");
 
   const user = useAuthStore(state => state.user);
 
@@ -69,12 +73,30 @@ export function CargarContent() {
       const numAmount = parseInt(amount.replace(/\D/g, ''), 10);
       const methodIdNum = parseInt(selectedMethod, 10);
       
-      const paymentRes = await sellerBalanceService.initiateTopup({
+      const origin = window.location.origin.includes('localhost') 
+        ? window.location.origin.replace('localhost', 'lvh.me') 
+        : window.location.origin;
+
+      const bodyParams: any = {
         amountCents: numAmount * 100, // asumiendo que el numAmount era pesos, lo enviamos en centavos
         paymentMethodId: isNaN(methodIdNum) ? undefined : methodIdNum,
         cellphone: phone || undefined,
-        returnUrl: `${window.location.origin}/cargar/resultado`
-      });
+        returnUrl: `${origin}/cargar/resultado`
+      };
+
+      if (selectedMethod === "133") {
+        bodyParams.paymentMethodData = {
+          documentType,
+          documentNumber,
+          name: fullName,
+          email,
+          bankId,
+          typePerson: "0",
+          address: "N/A"
+        };
+      }
+
+      const paymentRes = await sellerBalanceService.topup(bodyParams);
 
       return paymentRes.data;
     },
@@ -305,10 +327,71 @@ export function CargarContent() {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {/* INFO TEXTS */}
+                    {/* INFO TEXTS Y FORMULARIO PSE */}
                     {selectedMethod === "133" && (
-                      <p className="text-sm text-neutral-600">El pago va a ser realizado a través del Proveedor de Servicios Electrónicos PSE.</p>
+                      <div className="space-y-4">
+                        <p className="text-sm text-neutral-600">El pago va a ser realizado a través del Proveedor de Servicios Electrónicos PSE.</p>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm text-neutral-600 mb-1">Tipo Doc *</label>
+                            <select 
+                              className="w-full p-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white"
+                              value={documentType}
+                              onChange={e => setDocumentType(e.target.value)}
+                            >
+                              <option value="CC">CC</option>
+                              <option value="CE">CE</option>
+                              <option value="NIT">NIT</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm text-neutral-600 mb-1">Número de Doc *</label>
+                            <input 
+                              type="text" 
+                              className="w-full p-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white"
+                              value={documentNumber}
+                              onChange={e => setDocumentNumber(e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm text-neutral-600 mb-1">Nombre Completo *</label>
+                          <input 
+                            type="text" 
+                            className="w-full p-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white"
+                            value={fullName}
+                            onChange={e => setFullName(e.target.value)}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm text-neutral-600 mb-1">Correo Electrónico *</label>
+                          <input 
+                            type="email" 
+                            className="w-full p-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white"
+                            value={email}
+                            onChange={e => setEmail(e.target.value)}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm text-neutral-600 mb-1">Banco *</label>
+                          <select 
+                            className="w-full p-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white"
+                            value={bankId}
+                            onChange={e => setBankId(e.target.value)}
+                          >
+                            <option value="">Seleccione un banco...</option>
+                            <option value="1022">Banco Unión Colombiano</option>
+                            <option value="1007">Bancolombia</option>
+                            {/* TODO: El backend debe proveer un endpoint para listar los bancos dinámicamente */}
+                          </select>
+                        </div>
+                      </div>
                     )}
+                    
                     {(selectedMethod === "130" || selectedMethod === "131" || selectedMethod === "qr") && (
                       <p className="text-sm text-neutral-600">
                         <span className="font-bold">Recuerda:</span> Tu transacción está siendo procesada. Al finalizar te saldrá una pantalla "Inscribe tu comercio" marca "Acepto" en el botón para que puedas evitar varios pasos.
@@ -320,17 +403,18 @@ export function CargarContent() {
                       </p>
                     )}
 
-                    {/* FORM */}
-                    <div>
-                      <label className="block text-sm text-neutral-600 mb-2">Número de teléfono celular *</label>
-                      <input 
-                        type="text" 
-                        placeholder="312 000 0000"
-                        className="w-full max-w-sm p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white shadow-sm"
-                        value={phone}
-                        onChange={e => setPhone(e.target.value)}
-                      />
-                    </div>
+                    {/* FORM CELULAR (SOLO PARA MÉTODOS QUE LO REQUIERAN) */}
+                    {(selectedMethod === "130" || selectedMethod === "131" || selectedMethod === "transfiya" || selectedMethod === "qr") && (
+                      <div>
+                        <label className="block text-sm text-neutral-600 mb-2">Número de teléfono celular *</label>
+                        <input 
+                          type="text" 
+                          placeholder="312 000 0000"
+                          className="w-full max-w-sm p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white shadow-sm"
+                          value={phone}
+                          onChange={e => setPhone(e.target.value)}
+                        />
+                      </div>
                     )}
 
                     {/* ALERTS */}
