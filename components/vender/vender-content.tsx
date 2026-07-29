@@ -264,9 +264,15 @@ export function VenderContent() {
       
       return sellRes.data;
     },
-    onSuccess: () => {
+    onSuccess: (sell: any) => {
       queryClient.invalidateQueries({ queryKey: ['sells'] });
-      alert("¡Venta procesada exitosamente!");
+      if (sell?.status === 'failed') {
+        alert(`La venta no se pudo completar: ${sell?.errorMessage || 'Refácil rechazó la transacción'}`);
+      } else if (sell?.status === 'completed') {
+        alert("¡Venta procesada exitosamente!");
+      } else {
+        alert("Venta enviada, está en proceso de confirmación. Revisa el estado en tu historial de ventas.");
+      }
       setView('categories');
       setPhone("");
       setEmail("");

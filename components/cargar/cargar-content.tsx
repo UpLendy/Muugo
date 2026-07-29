@@ -63,7 +63,7 @@ export function CargarContent() {
     enabled: !!user?.id,
   });
 
-  const topups = Array.isArray(topupsData) ? topupsData : (topupsData?.data || []);
+  const topups = Array.isArray(topupsData) ? topupsData : (topupsData?.items || topupsData?.data || []);
 
   const payMutation = useMutation({
     mutationFn: async () => {
@@ -71,15 +71,25 @@ export function CargarContent() {
       if (!selectedMethod) throw new Error("Método no seleccionado");
       
       const numAmount = parseInt(amount.replace(/\D/g, ''), 10);
-      const methodIdNum = parseInt(selectedMethod, 10);
-      
-      const origin = window.location.origin.includes('localhost') 
-        ? window.location.origin.replace('localhost', 'lvh.me') 
+
+      // "bancolombia" no tiene paymentMethodId propio en Refácil: se deja sin
+      // mapear a propósito y cae al link de pago genérico.
+      const methodIdMap: Record<string, number> = {
+        "130": 130,       // Nequi
+        "131": 131,       // Daviplata
+        "133": 133,       // PSE
+        "transfiya": 155, // Transfiya Recaudo
+        "qr": 248,        // QR Interoperable
+      };
+      const methodIdNum = selectedMethod ? methodIdMap[selectedMethod] : undefined;
+
+      const origin = window.location.origin.includes('localhost')
+        ? window.location.origin.replace('localhost', 'lvh.me')
         : window.location.origin;
 
       const bodyParams: any = {
         amountCents: numAmount * 100, // asumiendo que el numAmount era pesos, lo enviamos en centavos
-        paymentMethodId: isNaN(methodIdNum) ? undefined : methodIdNum,
+        paymentMethodId: methodIdNum,
         cellphone: phone || undefined,
         returnUrl: `${origin}/cargar/resultado`
       };
@@ -126,6 +136,9 @@ export function CargarContent() {
   };
 
   const activeMethod = loadMethods.find(m => m.id === selectedMethod);
+
+  const requiresPhone = ["130", "131", "133", "transfiya", "qr"].includes(selectedMethod || "");
+  const isPhoneValid = phone.replace(/\D/g, '').length >= 10;
 
   const renderActiveMethodIcon = (method: any) => {
     if (!method) return null;
@@ -389,6 +402,17 @@ export function CargarContent() {
                             {/* TODO: El backend debe proveer un endpoint para listar los bancos dinámicamente */}
                           </select>
                         </div>
+
+                        <div>
+                          <label className="block text-sm text-neutral-600 mb-1">Número de teléfono celular *</label>
+                          <input
+                            type="text"
+                            placeholder="312 000 0000"
+                            className="w-full p-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white"
+                            value={phone}
+                            onChange={e => setPhone(e.target.value)}
+                          />
+                        </div>
                       </div>
                     )}
                     
@@ -431,7 +455,7 @@ export function CargarContent() {
                     <div className="pt-4">
                       <button
                         onClick={() => payMutation.mutate()}
-                        disabled={!amount || amount === "0" || payMutation.isPending}
+                        disabled={!amount || amount === "0" || payMutation.isPending || (requiresPhone && !isPhoneValid)}
                         className="px-8 py-3 bg-[#00d2ff] text-white font-bold rounded-full hover:bg-opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px]"
                       >
                         {payMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Cargar"}
@@ -462,20 +486,46 @@ export function CargarContent() {
           </button>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 mt-8">
-           <div className="relative mb-6">
-             <div className="w-40 h-40 bg-gradient-to-tr from-cyan-300 to-blue-500 rounded-full flex items-center justify-center shadow-lg relative overflow-hidden">
-               <div className="w-24 h-24 bg-[#6c48ff] rounded-full flex items-center justify-center shadow-inner z-10">
-                  <div className="text-white text-5xl font-black italic">!</div>
+        {isLoadingOrders ? (
+          <div className="flex-1 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-[#00d2ff] animate-spin" />
+          </div>
+        ) : topups.length > 0 ? (
+          <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+            {topups.map((topup: any) => (
+              <div key={topup.id || topup.topupId} className="p-3 rounded-xl border border-neutral-100 flex items-center justify-between hover:bg-neutral-50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-cyan-50 text-cyan-500 flex items-center justify-center">
+                    <CreditCard className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-neutral-800 text-xs">Carga #{String(topup.id || topup.topupId || "").slice(0, 6)}</p>
+                    <p className="text-[10px] text-neutral-500">{new Date(topup.createdAt || Date.now()).toLocaleDateString()}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-black text-neutral-800 text-sm">${((topup.amountCents || 0) / 100).toLocaleString()}</p>
+                  <p className="text-[9px] uppercase font-bold text-neutral-400">{topup.status}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-4 mt-8">
+             <div className="relative mb-6">
+               <div className="w-40 h-40 bg-gradient-to-tr from-cyan-300 to-blue-500 rounded-full flex items-center justify-center shadow-lg relative overflow-hidden">
+                 <div className="w-24 h-24 bg-[#6c48ff] rounded-full flex items-center justify-center shadow-inner z-10">
+                    <div className="text-white text-5xl font-black italic">!</div>
+                 </div>
+                 <div className="absolute top-4 left-4 w-6 h-6 bg-purple-500 rounded-full blur-sm" />
                </div>
-               <div className="absolute top-4 left-4 w-6 h-6 bg-purple-500 rounded-full blur-sm" />
              </div>
-           </div>
-           <h3 className="text-2xl font-black text-neutral-800 mb-2">Sin resultados</h3>
-           <p className="text-neutral-500 text-xs leading-relaxed max-w-[200px]">
-             Anímate a transar con los productos de la plataforma. Aún no tienes ventas registradas.
-           </p>
-        </div>
+             <h3 className="text-2xl font-black text-neutral-800 mb-2">Sin resultados</h3>
+             <p className="text-neutral-500 text-xs leading-relaxed max-w-[200px]">
+               Anímate a transar con los productos de la plataforma. Aún no tienes ventas registradas.
+             </p>
+          </div>
+        )}
       </div>
     </div>
   );
