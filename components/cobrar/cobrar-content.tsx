@@ -9,7 +9,8 @@ import {
   FileText,
   CreditCard,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  MessageCircle
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -22,13 +23,11 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// WhatsApp (277) se integra en producción pero todavía no tiene el whatsappAccountId
-// confirmado por Refácil ni se probó en vivo (ver CAMBIOS_PACHOW.md, punto 10) — se
-// omite del front hasta entonces. La lógica en el backend y en payMutation queda intacta.
 const paymentMethods = [
   { id: "link", label: "Link de pago", icon: Share2 },
   { id: "qr", label: "QR", icon: QrCode },
   { id: "bancolombia", label: "Bancolombia", logo: "bancolombia", barLabel: "Escanear QR" },
+  { id: "whatsapp", label: "Pagos Por WhatsApp", icon: MessageCircle },
 ];
 
 export function CobrarContent() {
@@ -258,10 +257,12 @@ export function CobrarContent() {
                         <label className="block text-sm text-neutral-600 mb-2">{selectedMethod === "bancolombia" ? "Numero de teléfono *" : "Teléfono *"}</label>
                         <input
                           type="text"
+                          inputMode="numeric"
+                          maxLength={10}
                           placeholder="3200000000"
                           className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white shadow-sm"
                           value={phone}
-                          onChange={e => setPhone(e.target.value)}
+                          onChange={e => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
                         />
                       </div>
                     )}

@@ -668,10 +668,12 @@ export function VenderContent() {
                       <label className="block text-sm text-neutral-500 mb-1 font-medium">Celular de entrega *</label>
                       <input
                         type="tel"
+                        inputMode="numeric"
+                        maxLength={10}
                         placeholder="312 000 0000"
                         className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00c9cc]/20 focus:border-[#00c9cc] shadow-sm transition-all"
                         value={phone}
-                        onChange={e => { setPhone(e.target.value); setQueryHash(null); setQueryResult(null); setPinStep('consulta'); }}
+                        onChange={e => { setPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setQueryHash(null); setQueryResult(null); setPinStep('consulta'); }}
                       />
                     </div>
 
