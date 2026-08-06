@@ -1,61 +1,64 @@
 "use client";
 
 import React, { useState } from "react";
-import { 
-  Calendar, 
-  ChevronDown, 
-  Search, 
-  BarChart3,
-  FileText,
+import {
+  Calendar,
   Download,
   Loader2
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useAuthStore } from "@/store/auth-store";
-import { reportsService } from "@/services/reports.service";
+import { reportsService, type ReportType } from "@/services/reports.service";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const tabs = [
-  "Ventas", "Compras", "Extracto", "Pagos", "Traslados", "Reversas", "Consumido"
-];
+// Extracto, Traslados, Reversas y Consumido salieron de este deploy — la UI para
+// Reversas/Consumido nunca se conectó a un endpoint, y Extracto/Traslados quedaron sin
+// pulir del lado del front. El backend (/reports/extracto, /reports/traslados) sigue
+// intacto para retomarlos cuando haga falta.
+const tabs = ["Ventas", "Pagos"];
+
+const toDateInput = (d: Date) => d.toISOString().slice(0, 10);
 
 export function ReportesContent() {
   const [activeTab, setActiveTab] = useState("Ventas");
   const [isGenerating, setIsGenerating] = useState(false);
   const user = useAuthStore(state => state.user);
 
+  const monthAgo = React.useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d;
+  }, []);
+  const [from, setFrom] = useState(toDateInput(monthAgo));
+  const [to, setTo] = useState(toDateInput(new Date()));
+
+  // Solo relevante en la pestaña "Ventas" — el backend de /reports/sells sí soporta
+  // filtrar por status ("completed" | "failed"), a diferencia de operador/línea.
+  const [estado, setEstado] = useState<"completed" | "failed" | null>(null);
+
+  const tabToTypeMap: Record<string, ReportType> = {
+    "Ventas": "sells",
+    "Pagos": "charges",
+  };
+
   const handleGenerateReport = async () => {
     if (!user?.id) return;
-    
+
+    const reportType = tabToTypeMap[activeTab];
+
     setIsGenerating(true);
     try {
-      // Mapeamos el tab activo al tipo de reporte esperado por la API
-      const tabToTypeMap: Record<string, any> = {
-        "Ventas": "sales",
-        "Compras": "payments",
-        "Extracto": "extracto",
-        "Pagos": "payments",
-        "Traslados": "traslados",
-        "Reversas": "reversas",
-        "Consumido": "consumido"
-      };
-      
-      const reportType = tabToTypeMap[activeTab] || "sales";
-
-      // Disparar la descarga
-      reportsService.downloadReport(reportType, { from: "2026-04-04", to: "2026-05-04" });
-      
-      setTimeout(() => {
-        setIsGenerating(false);
-      }, 1000); // Simulando delay de UI
-      
+      const params: { from: string; to: string; status?: string } = { from, to };
+      if (activeTab === "Ventas" && estado) params.status = estado;
+      await reportsService.downloadReport(reportType, params);
     } catch (error) {
       console.error(error);
       alert("Hubo un error al generar el reporte.");
+    } finally {
       setIsGenerating(false);
     }
   };
@@ -93,91 +96,63 @@ export function ReportesContent() {
           
           {/* Common Date Range Field */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between bg-neutral-50 border border-neutral-200 rounded-2xl p-4 cursor-pointer hover:border-neutral-300 transition-colors">
-              <div className="flex items-center gap-3">
-                <Calendar className="w-5 h-5 text-neutral-400" />
-                <span className="text-sm font-bold text-neutral-700 font-mono tracking-tight">2026/04/04 - 2026/05/04</span>
-              </div>
-              <ChevronDown className="w-5 h-5 text-neutral-300" />
+            <div className="flex items-center gap-3 bg-neutral-50 border border-neutral-200 rounded-2xl p-4">
+              <Calendar className="w-5 h-5 text-neutral-400 shrink-0" />
+              <input
+                type="date"
+                value={from}
+                max={to}
+                onChange={(e) => setFrom(e.target.value)}
+                className="flex-1 bg-transparent text-sm font-bold text-neutral-700 font-mono tracking-tight focus:outline-none"
+              />
+              <span className="text-neutral-300">–</span>
+              <input
+                type="date"
+                value={to}
+                min={from}
+                max={toDateInput(new Date())}
+                onChange={(e) => setTo(e.target.value)}
+                className="flex-1 bg-transparent text-sm font-bold text-neutral-700 font-mono tracking-tight focus:outline-none"
+              />
             </div>
           </div>
 
           {/* Conditional Fields based on Active Tab */}
           {activeTab === "Ventas" && (
-            <>
-              <div className="space-y-2">
-                <label className="text-xs font-black text-neutral-400 uppercase tracking-widest ml-1">Seleccione un operador *</label>
-                <div className="relative">
-                  <select className="w-full appearance-none bg-white border border-neutral-200 rounded-2xl p-4 text-sm text-neutral-500 focus:outline-none focus:border-[#eb0028] transition-colors cursor-pointer">
-                    <option>Selecciona una opción</option>
-                  </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-300 pointer-events-none" />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-black text-neutral-400 uppercase tracking-widest ml-1">Linea *</label>
-                <input 
-                  type="text" 
-                  placeholder="Linea"
-                  className="w-full bg-white border border-neutral-200 rounded-2xl p-4 text-sm focus:outline-none focus:border-[#eb0028] transition-colors"
-                />
-              </div>
-
-              <div className="space-y-4">
-                <label className="text-xs font-black text-neutral-400 uppercase tracking-widest ml-1">Seleccione el estado</label>
-                <div className="flex items-center gap-8">
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="w-6 h-6 rounded-full border-2 border-neutral-200 group-hover:border-neutral-300 transition-colors" />
-                    <span className="text-base font-bold text-neutral-700">Fallida</span>
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="w-6 h-6 rounded-full border-2 border-neutral-200 group-hover:border-neutral-300 transition-colors" />
-                    <span className="text-base font-bold text-neutral-700">Exitosa</span>
-                  </label>
-                </div>
-              </div>
-            </>
-          )}
-
-          {activeTab === "Reversas" && (
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-xs font-black text-neutral-400 uppercase tracking-widest ml-1">Seleccione un Tipo *</label>
-                <div className="relative">
-                  <select className="w-full appearance-none bg-white border border-neutral-200 rounded-2xl p-4 text-sm text-neutral-500 focus:outline-none focus:border-[#eb0028] transition-colors cursor-pointer">
-                    <option>Selecciona una opción</option>
-                  </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-300 pointer-events-none" />
-                </div>
-              </div>
-              <div className="space-y-4">
-                <label className="text-xs font-black text-neutral-400 uppercase tracking-widest ml-1">Seleccione una bolsa</label>
-                <div className="flex items-center gap-8">
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="w-6 h-6 rounded-full border-2 border-neutral-200 group-hover:border-neutral-300 transition-colors" />
-                    <span className="text-base font-bold text-neutral-700">Saldo</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {(activeTab === "Extracto" || activeTab === "Traslados" || activeTab === "Consumido") && (
             <div className="space-y-4">
-              <label className="text-xs font-black text-neutral-400 uppercase tracking-widest ml-1">Seleccione una bolsa</label>
+              <label className="text-xs font-black text-neutral-400 uppercase tracking-widest ml-1">Seleccione el estado</label>
               <div className="flex items-center gap-8">
-                {(activeTab === "Extracto" || activeTab === "Consumido") && (
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="w-6 h-6 rounded-full border-2 border-neutral-200 group-hover:border-neutral-300 transition-colors" />
-                    <span className="text-base font-bold text-neutral-700">Saldo</span>
-                  </label>
-                )}
                 <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="w-6 h-6 rounded-full border-2 border-neutral-200 group-hover:border-neutral-300 transition-colors" />
-                  <span className="text-base font-bold text-neutral-700">Ganancia</span>
+                  <input
+                    type="radio"
+                    name="estado"
+                    checked={estado === "failed"}
+                    onChange={() => setEstado("failed")}
+                    className="w-6 h-6 accent-[#eb0028] cursor-pointer"
+                  />
+                  <span className="text-base font-bold text-neutral-700">Fallida</span>
                 </label>
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <input
+                    type="radio"
+                    name="estado"
+                    checked={estado === "completed"}
+                    onChange={() => setEstado("completed")}
+                    className="w-6 h-6 accent-[#eb0028] cursor-pointer"
+                  />
+                  <span className="text-base font-bold text-neutral-700">Exitosa</span>
+                </label>
+                {estado && (
+                  <button
+                    type="button"
+                    onClick={() => setEstado(null)}
+                    className="text-xs font-bold text-neutral-400 hover:text-[#eb0028] underline"
+                  >
+                    Limpiar
+                  </button>
+                )}
               </div>
+              <p className="text-xs text-neutral-400 ml-1">Sin seleccionar incluye todos los estados.</p>
             </div>
           )}
 

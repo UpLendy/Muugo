@@ -1,6 +1,6 @@
 import { apiClient } from '@/lib/api-client';
 
-type ReportType = 'sells' | 'charges' | 'commissions' | 'extracto' | 'traslados';
+export type ReportType = 'sells' | 'charges' | 'commissions' | 'extracto' | 'traslados';
 
 export const reportsService = {
   async getReport(type: ReportType, params?: { from?: string; to?: string; page?: number; limit?: number }) {
@@ -8,8 +8,18 @@ export const reportsService = {
     return data;
   },
 
-  downloadReport(type: ReportType, params?: { from?: string; to?: string }) {
-    const query = new URLSearchParams({ ...params, format: 'csv' } as any).toString();
-    window.open(`${process.env.NEXT_PUBLIC_API_URL}/reports/${type}?${query}`);
+  async downloadReport(type: ReportType, params?: { from?: string; to?: string; status?: string }) {
+    const response = await apiClient.get(`/reports/${type}`, {
+      params: { ...params, format: 'csv' },
+      responseType: 'blob',
+    });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${type}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
   },
 };

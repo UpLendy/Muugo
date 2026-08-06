@@ -23,6 +23,11 @@ export const sellerBalanceService = {
     return data;
   },
 
+  getTopup: async (id: string) => {
+    const { data } = await apiClient.get(`/seller-balance/topups/${id}`);
+    return data;
+  },
+
   getMovements: async (params?: { type?: string; from?: string; to?: string; page?: number; limit?: number }) => {
     const { data } = await apiClient.get('/seller-balance/movements', { params });
     return data;

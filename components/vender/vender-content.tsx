@@ -80,14 +80,6 @@ const PARENT_GROUPS = [
     categoryIds: [65, 79, 176, 177],
   },
   {
-    id: 'corresponsalia',
-    name: 'Corresponsalía',
-    icon: Building2,
-    bg: 'bg-[#e0ffef]',
-    text: 'text-[#47db95]',
-    categoryIds: [60, 70, 174, 192, 200],
-  },
-  {
     id: 'enviar',
     name: 'Enviar y recibir dinero',
     icon: Send,
@@ -120,12 +112,14 @@ const PARENT_GROUPS = [
     categoryIds: [95, 99, 152],
   },
   {
-    id: 'llaves',
-    name: 'Llaves Bre-B',
-    icon: HandCoins,
-    bg: 'bg-[#d6faff]',
-    text: 'text-[#39dbff]',
-    categoryIds: [189, 199],
+    id: 'paquetes',
+    name: 'Paquetes',
+    icon: Box,
+    bg: 'bg-[#ffe0ec]',
+    text: 'text-[#ff4d94]',
+    // Raíz "Paquetes" (3) + todo su árbol de subcategorías (operador → tipo de paquete,
+    // p.ej. "Paquetes Movistar" → "Minutos"), donde realmente cuelgan los productos.
+    categoryIds: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25, 30, 31, 32, 33, 34, 35, 36, 39, 40, 41, 42, 43, 44, 48, 57, 58, 66, 67, 68, 69, 72, 108, 109, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 168, 169, 170, 171, 172, 179, 180, 196],
   },
 ] as const;
 
@@ -164,7 +158,47 @@ export function VenderContent() {
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [document, setDocument] = useState('');
   const [customAmount, setCustomAmount] = useState('');
+  const [reference, setReference] = useState('');
+  const [queryHash, setQueryHash] = useState<string | null>(null);
+  const [queryResult, setQueryResult] = useState<Record<string, unknown> | null>(null);
+  const [pinStep, setPinStep] = useState<'consulta' | 'pago'>('consulta');
+  // Plan requerido por Refácil para la venta de facturas (EPM): AP = con alumbrado público, SP = sin él.
+  const [plan, setPlan] = useState<'AP' | 'SP'>('AP');
+
+  // Categorías de apuestas (Suerte y azar): Refácil solo requiere { cellphone, document }
+  const BETTING_CATEGORY_IDS = new Set([100, 62]);
+  const isBetting = !!selectedProduct && BETTING_CATEGORY_IDS.has(selectedProduct.categoryId);
+
+  // Certificación Refácil (2026-08-03): Recargas y Paquetes solo llevan { cellphone } (sin email,
+  // numero/accountId/phoneNumber ni moveTmpBalance/webhook, estos últimos ya excluidos en el backend).
+  // Pines sí necesita el email (no lo tocaron en certificación).
+  const RECARGAS_CATEGORY_IDS = new Set(PARENT_GROUPS.find(g => g.id === 'recargas')!.categoryIds);
+  const PINES_CATEGORY_IDS = new Set(PARENT_GROUPS.find(g => g.id === 'pines')!.categoryIds);
+  const PAQUETES_CATEGORY_IDS = new Set(PARENT_GROUPS.find(g => g.id === 'paquetes')!.categoryIds);
+  const isRecargas = !!selectedProduct && RECARGAS_CATEGORY_IDS.has(selectedProduct.categoryId);
+  const isPines = !!selectedProduct && PINES_CATEGORY_IDS.has(selectedProduct.categoryId);
+  const isPaquetes = !!selectedProduct && PAQUETES_CATEGORY_IDS.has(selectedProduct.categoryId);
+  // Ni Recargas ni Paquetes piden email.
+  const isCellphoneOnly = isRecargas || isPaquetes;
+
+  // Categorías de "Servicios" (facturas/PIN: DataCrédito, Energía prepago, Refácil Credit):
+  // manejan el flujo típico de una pasarela de pago de facturas — primero se consulta la
+  // referencia contra /sells/query, y solo con esa consulta validada se pasa a la vista de pago.
+  const QUERY_REQUIRED_CATEGORY_IDS = new Set([95, 99, 152]);
+  const isPinQuery = !!selectedProduct && QUERY_REQUIRED_CATEGORY_IDS.has(selectedProduct.categoryId);
+  // Energía prepago (EPM/ESSA): Refácil exige el campo "plan" (alumbrado público) en la venta.
+  // DataCrédito y Refácil Credit no tienen ese concepto, así que se limita a esta categoría.
+  const isEnergyBill = !!selectedProduct && selectedProduct.categoryId === 99;
+
+  // El monto de estas categorías no lo escribe el usuario: lo devuelve Refácil en /sells/query.
+  const resolveQueryAmount = (data: Record<string, unknown> | null): number | undefined => {
+    if (!data) return undefined;
+    const raw = (data as any).amount ?? (data as any).montoTotal ?? (data as any).total ?? (data as any).value;
+    const num = typeof raw === 'string' ? parseFloat(raw) : typeof raw === 'number' ? raw : undefined;
+    return num !== undefined && !isNaN(num) ? num : undefined;
+  };
 
   // -- QUERIES --
   const { data: allProductsData, isLoading: isLoadingProducts } = useQuery({
@@ -240,11 +274,22 @@ export function VenderContent() {
       if (!selectedProduct) throw new Error("Debes seleccionar un producto");
       if (!user?.id) throw new Error("Usuario no encontrado");
 
+      if (isPinQuery && !queryHash) throw new Error("Primero debes consultar la referencia");
+
       // Resolver monto (en PESOS COP para POST /sells)
       let finalAmount = undefined;
       if (selectedProduct.amount === null) {
-        finalAmount = parseInt(customAmount.replace(/\D/g, ''), 10);
-        if (isNaN(finalAmount) || finalAmount <= 0) throw new Error("Monto inválido");
+        const typedAmount = parseInt(customAmount.replace(/\D/g, ''), 10);
+        if (isPinQuery) {
+          // Preferimos el monto que devuelve Refácil en la consulta; si la respuesta no lo
+          // trae, caemos al monto que el usuario ingresó y con el que se hizo la consulta.
+          finalAmount = resolveQueryAmount(queryResult) ?? (!isNaN(typedAmount) && typedAmount > 0 ? typedAmount : undefined);
+          if (finalAmount === undefined) throw new Error("No se pudo determinar el monto a pagar desde la consulta");
+          if (finalAmount < 10000) throw new Error("El monto mínimo para este servicio es $10.000 COP");
+        } else {
+          finalAmount = typedAmount;
+          if (isNaN(finalAmount) || finalAmount <= 0) throw new Error("Monto inválido");
+        }
       }
 
       // Ejecutar venta directa contra el saldo del vendedor
@@ -253,15 +298,27 @@ export function VenderContent() {
         amount: finalAmount,
         // Refácil Commerce suele requerir 'numero' para recargas o 'accountId' para pines/facturas.
         // Agregamos 'cellphone' porque las credenciales de QA de Refácil lo piden de esta forma.
-        sellData: { 
-          numero: phone, 
-          accountId: phone,
-          phoneNumber: phone, 
-          cellphone: phone,
-          email: email || undefined 
-        }
+        // Para apuestas (Suerte y azar), Refácil solo espera { cellphone, document }.
+        // Para flujos PIN/factura (Energía prepago), se envía { cellphone, reference, plan } y el
+        // hash devuelto por la consulta previa a /sells/query (el backend lo mete en data.hashEchoData).
+        sellData: isBetting
+          ? { cellphone: phone, document }
+          : isPinQuery
+          ? (isEnergyBill ? { cellphone: phone, reference, plan } : { cellphone: phone, reference })
+          : isCellphoneOnly
+          ? { cellphone: phone }
+          : isPines
+          ? { cellphone: phone, email: email || undefined }
+          : {
+              numero: phone,
+              accountId: phone,
+              phoneNumber: phone,
+              cellphone: phone,
+              email: email || undefined
+            },
+        hash: isPinQuery ? (queryHash ?? undefined) : undefined,
       });
-      
+
       return sellRes.data;
     },
     onSuccess: (sell: any) => {
@@ -276,7 +333,13 @@ export function VenderContent() {
       setView('categories');
       setPhone("");
       setEmail("");
+      setDocument("");
       setCustomAmount("");
+      setReference("");
+      setQueryHash(null);
+      setQueryResult(null);
+      setPinStep('consulta');
+      setPlan('AP');
       setSelectedProduct(null);
     },
     onError: (error: any) => {
@@ -284,6 +347,57 @@ export function VenderContent() {
       alert(`Error: ${error?.response?.data?.error?.message || error?.message || "No se pudo procesar la venta"}`);
     },
   });
+
+  // -- MUTACIÓN DE CONSULTA PREVIA (vista "Consultar" del flujo de facturas/Servicios) --
+  const queryMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedProduct) throw new Error("Debes seleccionar un producto");
+      if (!phone) throw new Error("Debes ingresar el celular de entrega");
+      if (!reference) throw new Error("Debes ingresar la referencia");
+
+      // Refácil exige 'amount' > 0 en /product/query (un 0 lo rechaza como parámetro
+      // faltante, errorCode 062). Si el producto tiene precio fijo lo enviamos directo;
+      // si es de monto variable (p.ej. Energía prepago EPM/ESSA), el usuario debe indicarlo.
+      let amountToQuery: number;
+      if (selectedProduct.amount !== null) {
+        amountToQuery = selectedProduct.amount / 100;
+      } else {
+        amountToQuery = parseInt(customAmount.replace(/\D/g, ''), 10);
+        if (isNaN(amountToQuery) || amountToQuery <= 0) throw new Error("Debes ingresar el valor a recargar");
+        if (amountToQuery < 10000) throw new Error("El monto mínimo para este servicio es $10.000 COP");
+      }
+
+      const res = await sellService.query({
+        refacilProductId: selectedProduct.id,
+        cellphone: phone,
+        amount: amountToQuery,
+        reference,
+      });
+      // La respuesta de Refácil viene como { statusCode, message, date, payload: {...} };
+      // el hash/hashEchoData y demás datos de la factura están dentro de "payload", no en la raíz.
+      const body = (res?.data ?? {}) as Record<string, unknown>;
+      const payload = (body.payload ?? body) as Record<string, unknown>;
+      const hash = (payload.hashEchoData ?? payload.hash) as string | undefined;
+      if (!hash) throw new Error("Refácil no devolvió un hash válido para esta referencia");
+      return { hash, data: payload };
+    },
+    onSuccess: ({ hash, data }: { hash: string; data: Record<string, unknown> }) => {
+      setQueryHash(hash);
+      setQueryResult(data);
+      setPinStep('pago');
+    },
+    onError: (error: any) => {
+      setQueryHash(null);
+      setQueryResult(null);
+      alert(`Error al consultar: ${error?.response?.data?.error?.message || error?.message || "No se pudo consultar la referencia"}`);
+    },
+  });
+
+  const volverAConsultar = () => {
+    setQueryHash(null);
+    setQueryResult(null);
+    setPinStep('consulta');
+  };
 
   // -- HANDLERS --
   const openGroupModal = (groupId: string) => {
@@ -304,7 +418,13 @@ export function VenderContent() {
     setView('checkout');
     setPhone('');
     setEmail('');
+    setDocument('');
     setCustomAmount('');
+    setReference('');
+    setQueryHash(null);
+    setQueryResult(null);
+    setPinStep('consulta');
+    setPlan('AP');
   };
 
   const goBackToCategories = () => {
@@ -313,6 +433,9 @@ export function VenderContent() {
   };
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setQueryHash(null);
+    setQueryResult(null);
+    setPinStep('consulta');
     const value = e.target.value.replace(/\D/g, '');
     if (!value) { setCustomAmount(''); return; }
     setCustomAmount(new Intl.NumberFormat('es-CO').format(parseInt(value, 10)));
@@ -414,68 +537,217 @@ export function VenderContent() {
                 </div>
               </div>
 
-              <div className="space-y-5 max-w-lg">
-
-                {selectedProduct.amount === null && (
-                  <div>
-                    <label className="block text-sm text-neutral-500 mb-1 font-medium">Valor a recargar *</label>
-                    <div className="flex items-center gap-2 p-4 border border-neutral-200 rounded-xl focus-within:ring-2 focus-within:ring-[#00c9cc]/20 focus-within:border-[#00c9cc] bg-white transition-all shadow-sm">
-                      <span className="text-neutral-400 font-bold">$</span>
-                      <input
-                        type="text"
-                        className="w-full bg-transparent outline-none font-bold text-neutral-800 text-lg placeholder:font-normal placeholder:text-neutral-300"
-                        value={customAmount}
-                        onChange={handleAmountChange}
-                        placeholder="0"
-                      />
-                      <span className="text-neutral-400 text-xs font-bold">COP</span>
+              {isPinQuery && pinStep === 'pago' ? (
+                /* --- VISTA DE PAGO (post-consulta, categorías de Servicios) --- */
+                <>
+                  <div className="max-w-lg space-y-5">
+                    <div className="rounded-xl border border-[#00c9cc]/20 bg-[#00c9cc]/5 p-5">
+                      <p className="text-xs font-bold text-[#00a3a6] uppercase mb-3 flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5" /> Referencia validada por Refácil
+                      </p>
+                      <dl className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <dt className="text-neutral-500">Referencia</dt>
+                          <dd className="font-bold text-neutral-800">{reference}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-neutral-500">Celular de entrega</dt>
+                          <dd className="font-bold text-neutral-800">{phone}</dd>
+                        </div>
+                        {(() => {
+                          const typedAmount = parseInt(customAmount.replace(/\D/g, ''), 10);
+                          const amt = resolveQueryAmount(queryResult) ?? (!isNaN(typedAmount) && typedAmount > 0 ? typedAmount : undefined);
+                          return amt !== undefined ? (
+                            <div className="flex justify-between">
+                              <dt className="text-neutral-500">Valor a pagar</dt>
+                              <dd className="font-bold text-neutral-800">${amt.toLocaleString('es-CO')} COP</dd>
+                            </div>
+                          ) : null;
+                        })()}
+                        {typeof (queryResult?.Customer as any)?.name === 'string' && (
+                          <div className="flex justify-between">
+                            <dt className="text-neutral-500">Cliente</dt>
+                            <dd className="font-bold text-neutral-800">{String((queryResult!.Customer as any).name)}</dd>
+                          </div>
+                        )}
+                        {typeof (queryResult?.Customer as any)?.docNumber === 'string' && (
+                          <div className="flex justify-between">
+                            <dt className="text-neutral-500">Documento</dt>
+                            <dd className="font-bold text-neutral-800">{String((queryResult!.Customer as any).docNumber)}</dd>
+                          </div>
+                        )}
+                        {queryResult && Object.entries(queryResult)
+                          .filter(([key, value]) =>
+                            !['hash', 'hashEchoData', 'amount', 'montoTotal', 'total', 'value', 'Customer'].includes(key) &&
+                            (typeof value === 'string' || typeof value === 'number'))
+                          .map(([key, value]) => (
+                            <div key={key} className="flex justify-between">
+                              <dt className="text-neutral-500 capitalize">{key}</dt>
+                              <dd className="font-bold text-neutral-800">{String(value)}</dd>
+                            </div>
+                          ))}
+                      </dl>
                     </div>
-                    <p className="text-[10px] text-neutral-400 mt-1 ml-1">Ingresa el valor exacto a recargar en pesos colombianos.</p>
+
+                    {isEnergyBill && (
+                      <div>
+                        <label className="block text-sm text-neutral-500 mb-2 font-medium">Tipo de plan *</label>
+                        <div className="flex gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setPlan('AP')}
+                            className={`flex-1 px-4 py-3 rounded-xl text-sm font-bold border transition-all ${plan === 'AP' ? 'bg-[#00c9cc] text-white border-[#00c9cc]' : 'bg-white text-neutral-500 border-neutral-200'}`}
+                          >
+                            Con alumbrado público
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPlan('SP')}
+                            className={`flex-1 px-4 py-3 rounded-xl text-sm font-bold border transition-all ${plan === 'SP' ? 'bg-[#00c9cc] text-white border-[#00c9cc]' : 'bg-white text-neutral-500 border-neutral-200'}`}
+                          >
+                            Sin alumbrado público
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={volverAConsultar}
+                      className="text-xs font-bold text-neutral-500 hover:text-neutral-700 flex items-center gap-1"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" /> Volver a consultar
+                    </button>
                   </div>
-                )}
 
-                <div>
-                  <label className="block text-sm text-neutral-500 mb-1 font-medium">Celular de entrega *</label>
-                  <input
-                    type="tel"
-                    placeholder="312 000 0000"
-                    className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00c9cc]/20 focus:border-[#00c9cc] shadow-sm transition-all"
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
-                  />
-                </div>
+                  <div className="mt-10 pt-6 border-t border-neutral-100 flex items-center gap-4">
+                    <button
+                      onClick={() => saleMutation.mutate()}
+                      disabled={!queryHash || saleMutation.isPending}
+                      className="px-8 py-4 bg-gradient-to-r from-[#00c9cc] to-[#00a3a6] text-white font-bold rounded-full hover:scale-105 transition-all shadow-lg shadow-cyan-200 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed min-w-[200px] flex items-center justify-center gap-2"
+                    >
+                      {saleMutation.isPending ? (
+                        <><Loader2 className="w-5 h-5 animate-spin" /> Procesando...</>
+                      ) : (
+                        <><Check className="w-4 h-4" /> Confirmar y Pagar</>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => { setView('categories'); setSelectedProduct(null); }}
+                      className="text-neutral-400 hover:text-neutral-600 text-sm font-medium transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                /* --- VISTA DE CONSULTA / FORMULARIO ESTÁNDAR --- */
+                <>
+                  <div className="space-y-5 max-w-lg">
 
-                <div>
-                  <label className="block text-sm text-neutral-500 mb-1 font-medium">Correo electrónico *</label>
-                  <input
-                    type="email"
-                    placeholder="ejemplo@mail.com"
-                    className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00c9cc]/20 focus:border-[#00c9cc] shadow-sm transition-all"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                  />
-                </div>
-              </div>
+                    {selectedProduct.amount === null && (
+                      <div>
+                        <label className="block text-sm text-neutral-500 mb-1 font-medium">Valor a recargar *</label>
+                        <div className="flex items-center gap-2 p-4 border border-neutral-200 rounded-xl focus-within:ring-2 focus-within:ring-[#00c9cc]/20 focus-within:border-[#00c9cc] bg-white transition-all shadow-sm">
+                          <span className="text-neutral-400 font-bold">$</span>
+                          <input
+                            type="text"
+                            className="w-full bg-transparent outline-none font-bold text-neutral-800 text-lg placeholder:font-normal placeholder:text-neutral-300"
+                            value={customAmount}
+                            onChange={handleAmountChange}
+                            placeholder="0"
+                          />
+                          <span className="text-neutral-400 text-xs font-bold">COP</span>
+                        </div>
+                        <p className="text-[10px] text-neutral-400 mt-1 ml-1">Ingresa el valor exacto a recargar en pesos colombianos.</p>
+                      </div>
+                    )}
 
-              <div className="mt-10 pt-6 border-t border-neutral-100 flex items-center gap-4">
-                <button
-                  onClick={() => saleMutation.mutate()}
-                  disabled={!phone || !email || (selectedProduct.amount === null && !customAmount) || saleMutation.isPending}
-                  className="px-8 py-4 bg-gradient-to-r from-[#00c9cc] to-[#00a3a6] text-white font-bold rounded-full hover:scale-105 transition-all shadow-lg shadow-cyan-200 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed min-w-[200px] flex items-center justify-center gap-2"
-                >
-                  {saleMutation.isPending ? (
-                    <><Loader2 className="w-5 h-5 animate-spin" /> Procesando...</>
-                  ) : (
-                    <><Check className="w-4 h-4" /> Confirmar Venta</>
-                  )}
-                </button>
-                <button
-                  onClick={() => { setView('categories'); setSelectedProduct(null); }}
-                  className="text-neutral-400 hover:text-neutral-600 text-sm font-medium transition-colors"
-                >
-                  Cancelar
-                </button>
-              </div>
+                    <div>
+                      <label className="block text-sm text-neutral-500 mb-1 font-medium">Celular de entrega *</label>
+                      <input
+                        type="tel"
+                        placeholder="312 000 0000"
+                        className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00c9cc]/20 focus:border-[#00c9cc] shadow-sm transition-all"
+                        value={phone}
+                        onChange={e => { setPhone(e.target.value); setQueryHash(null); setQueryResult(null); setPinStep('consulta'); }}
+                      />
+                    </div>
+
+                    {isBetting ? (
+                      <div>
+                        <label className="block text-sm text-neutral-500 mb-1 font-medium">Documento del cliente *</label>
+                        <input
+                          type="text"
+                          placeholder="1023900000"
+                          className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00c9cc]/20 focus:border-[#00c9cc] shadow-sm transition-all"
+                          value={document}
+                          onChange={e => setDocument(e.target.value)}
+                        />
+                      </div>
+                    ) : isPinQuery ? (
+                      <div>
+                        <label className="block text-sm text-neutral-500 mb-1 font-medium">Referencia de factura *</label>
+                        <input
+                          type="text"
+                          placeholder="1234567"
+                          className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00c9cc]/20 focus:border-[#00c9cc] shadow-sm transition-all"
+                          value={reference}
+                          onChange={e => { setReference(e.target.value); setQueryHash(null); setQueryResult(null); setPinStep('consulta'); }}
+                        />
+                        <p className="text-[10px] text-neutral-400 mt-1 ml-1">
+                          Consulta la referencia con Refácil para validar el monto antes de pagar.
+                        </p>
+                      </div>
+                    ) : isCellphoneOnly ? null : (
+                      <div>
+                        <label className="block text-sm text-neutral-500 mb-1 font-medium">Correo electrónico *</label>
+                        <input
+                          type="email"
+                          placeholder="ejemplo@mail.com"
+                          className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00c9cc]/20 focus:border-[#00c9cc] shadow-sm transition-all"
+                          value={email}
+                          onChange={e => setEmail(e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-10 pt-6 border-t border-neutral-100 flex items-center gap-4">
+                    {isPinQuery ? (
+                      <button
+                        onClick={() => queryMutation.mutate()}
+                        disabled={!phone || !reference || (selectedProduct.amount === null && !customAmount) || queryMutation.isPending}
+                        className="px-8 py-4 bg-gradient-to-r from-[#00c9cc] to-[#00a3a6] text-white font-bold rounded-full hover:scale-105 transition-all shadow-lg shadow-cyan-200 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed min-w-[200px] flex items-center justify-center gap-2"
+                      >
+                        {queryMutation.isPending ? (
+                          <><Loader2 className="w-5 h-5 animate-spin" /> Consultando...</>
+                        ) : (
+                          <><FileText className="w-4 h-4" /> Consultar Factura</>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => saleMutation.mutate()}
+                        disabled={!phone || (isBetting ? !document : isCellphoneOnly ? false : !email) || (selectedProduct.amount === null && !customAmount) || saleMutation.isPending}
+                        className="px-8 py-4 bg-gradient-to-r from-[#00c9cc] to-[#00a3a6] text-white font-bold rounded-full hover:scale-105 transition-all shadow-lg shadow-cyan-200 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed min-w-[200px] flex items-center justify-center gap-2"
+                      >
+                        {saleMutation.isPending ? (
+                          <><Loader2 className="w-5 h-5 animate-spin" /> Procesando...</>
+                        ) : (
+                          <><Check className="w-4 h-4" /> Confirmar Venta</>
+                        )}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { setView('categories'); setSelectedProduct(null); }}
+                      className="text-neutral-400 hover:text-neutral-600 text-sm font-medium transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

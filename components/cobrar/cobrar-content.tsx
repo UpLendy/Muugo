@@ -1,15 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
-import { 
-  Share2, 
-  QrCode, 
-  MessageCircle, 
+import {
+  Share2,
+  QrCode,
   ChevronRight,
   ChevronLeft,
   FileText,
   CreditCard,
-  Zap,
   Loader2,
   AlertCircle
 } from "lucide-react";
@@ -24,20 +22,22 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// WhatsApp (277) se integra en producción pero todavía no tiene el whatsappAccountId
+// confirmado por Refácil ni se probó en vivo (ver CAMBIOS_PACHOW.md, punto 10) — se
+// omite del front hasta entonces. La lógica en el backend y en payMutation queda intacta.
 const paymentMethods = [
-  { id: "llave", label: "Tu llave", isNew: true, isSpecial: true },
   { id: "link", label: "Link de pago", icon: Share2 },
-  { id: "transfiya", label: "Pagos con Transfiya", icon: Zap, logo: "transfiya", barLabel: "Notificación al celular" },
   { id: "qr", label: "QR", icon: QrCode },
   { id: "bancolombia", label: "Bancolombia", logo: "bancolombia", barLabel: "Escanear QR" },
-  { id: "whatsapp", label: "Pagos Por WhatsApp", icon: MessageCircle, barLabel: "WhatsApp" },
 ];
 
 export function CobrarContent() {
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [phone, setPhone] = useState("");
-  
+  const [paymentLink, setPaymentLink] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+
   const user = useAuthStore(state => state.user);
 
   // Obtener la tienda del vendedor
@@ -70,11 +70,11 @@ export function CobrarContent() {
 
       let paymentMethodId: number | undefined = undefined;
       // Ejemplos de mapeo de IDs (se ajustan según el backend real de Refácil)
-      if (selectedMethod === 'transfiya') paymentMethodId = 155;
-      else if (selectedMethod === 'qr' || selectedMethod === 'bancolombia') paymentMethodId = 248;
+      if (selectedMethod === 'qr' || selectedMethod === 'bancolombia') paymentMethodId = 248;
+      if (selectedMethod === 'whatsapp') paymentMethodId = 277; // WhatsApp nativo de Refácil: envía el link directo al celular del cliente
 
-      const origin = window.location.origin.includes('localhost') 
-        ? window.location.origin.replace('localhost', 'lvh.me') 
+      const origin = window.location.origin.includes('localhost')
+        ? window.location.origin.replace('localhost', 'lvh.me')
         : window.location.origin;
 
       const chargeRes = await chargeService.create({
@@ -89,8 +89,21 @@ export function CobrarContent() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['charges'] });
-      if (data?.paymentUrl) {
+      if (data?.chargeId) {
+        sessionStorage.setItem('dismanet:lastChargeId', data.chargeId);
+      }
+      if (selectedMethod === 'whatsapp') {
+        // Refácil manda el link de pago directo al WhatsApp del cliente, no hay nada que compartir acá.
+        alert("Listo, le enviamos el link de pago por WhatsApp a tu cliente.");
+        setAmount("");
+        setPhone("");
+        setSelectedMethod(null);
+      } else if ((selectedMethod === 'qr' || selectedMethod === 'bancolombia') && data?.paymentUrl) {
+        // Refácil muestra el QR para escanear en esa misma página, sí hay que llevar al vendedor ahí.
         window.location.href = data.paymentUrl;
+      } else if (data?.paymentUrl) {
+        setPaymentLink(data.paymentUrl);
+        setLinkCopied(false);
       } else {
         alert("Pago iniciado exitosamente.");
         setAmount("");
@@ -98,9 +111,9 @@ export function CobrarContent() {
         setSelectedMethod(null);
       }
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error(error);
-      alert("Hubo un error al procesar el cobro.");
+      alert(`Error: ${error?.response?.data?.error?.message || error?.message || "Hubo un error al procesar el cobro."}`);
     }
   });
 
@@ -115,15 +128,11 @@ export function CobrarContent() {
   };
 
   const activeMethod = paymentMethods.find(m => m.id === selectedMethod);
-  const isBreB = selectedMethod === "llave";
 
   const renderActiveMethodIcon = () => {
     if (!activeMethod) return null;
     if (activeMethod.logo === "bancolombia") {
       return <span className="font-black text-sm">Bancolombia</span>;
-    }
-    if (activeMethod.logo === "transfiya") {
-      return <span className="font-black italic text-blue-600">transfiya</span>;
     }
     if (activeMethod.icon) {
       const Icon = activeMethod.icon;
@@ -137,44 +146,8 @@ export function CobrarContent() {
       {/* Main Cobrar Section */}
       <div className="flex-[2] flex flex-col h-full overflow-y-auto pr-4 pb-20">
         
-        {isBreB ? (
-          /* VISTA EXCLUSIVA BRE-B (TU LLAVE) */
-          <div className="flex flex-col h-full">
-            <div className="flex items-center mb-10">
-               <button 
-                onClick={() => setSelectedMethod(null)}
-                className="flex items-center gap-2 text-neutral-800 font-bold hover:text-black transition-colors"
-               >
-                 <ChevronLeft className="w-5 h-5" />
-                 Cobrar
-               </button>
-            </div>
+        <div className="space-y-10 max-w-xl mx-auto w-full">
 
-            <div className="flex-1 flex flex-col items-center justify-center text-center">
-               <h1 className="text-5xl font-black text-[#00e5ff] italic mb-12">Bre-B</h1>
-               
-               <div className="relative mb-8">
-                 <div className="w-40 h-40 bg-gradient-to-tr from-[#00d2ff] to-[#00ff88] rounded-full flex items-center justify-center shadow-lg relative overflow-hidden">
-                   <div className="w-24 h-24 bg-[#7a2dfb] rounded-full flex items-center justify-center shadow-inner z-10">
-                      <div className="text-white text-5xl font-black italic">!</div>
-                   </div>
-                   <div className="absolute top-2 left-2 w-8 h-8 bg-purple-500 rounded-full blur-sm" />
-                   <div className="absolute bottom-2 right-2 w-6 h-6 bg-blue-600 rounded-md" />
-                 </div>
-               </div>
-
-               <h2 className="text-3xl font-black text-neutral-900 mb-4">Aún no tienes llaves creadas</h2>
-               <p className="text-neutral-500 mb-8">Activa ya Bre-B para comenzar a utilizar tus llaves.</p>
-               
-               <button className="px-8 py-3 bg-[#00d2ff] text-white font-bold rounded-full hover:opacity-90 transition-opacity">
-                 Activar ahora
-               </button>
-            </div>
-          </div>
-        ) : (
-          /* FLUJO NORMAL (OTROS METODOS) */
-          <div className="space-y-10 max-w-xl mx-auto w-full">
-            
             {/* Step 1: Amount */}
             <div className="space-y-6">
               <div className="flex items-center gap-4">
@@ -211,54 +184,24 @@ export function CobrarContent() {
                     <button
                       key={method.id}
                       onClick={() => setSelectedMethod(method.id)}
-                      className={cn(
-                        "w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all duration-200 group",
-                        method.isSpecial 
-                          ? "bg-gradient-to-r from-[#00d2ff] to-[#00ff88] border-transparent text-white shadow-md shadow-cyan-100" 
-                          : "bg-white border-neutral-100 text-neutral-800 hover:border-neutral-200"
-                      )}
+                      className="w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all duration-200 group bg-white border-neutral-100 text-neutral-800 hover:border-neutral-200"
                     >
                       <div className="flex items-center gap-4">
-                        {method.isSpecial ? (
-                          <div className="w-8 h-8 flex items-center justify-center">
-                            <span className="text-xl font-black italic tracking-tighter">---</span>
-                          </div>
-                        ) : method.logo === "bancolombia" ? (
+                        {method.logo === "bancolombia" ? (
                           <div className="w-8 h-8 flex items-center justify-center font-black text-[10px] leading-none">
                             Bancolombia
                           </div>
-                        ) : method.logo === "transfiya" ? (
-                          <div className="w-8 h-8 flex items-center justify-center italic font-black text-blue-600 text-xs">
-                            transfiya
-                          </div>
                         ) : (
-                          <div className={cn(
-                            "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
-                            method.isSpecial ? "bg-white/20" : "bg-neutral-50 text-neutral-400 group-hover:bg-neutral-100"
-                          )}>
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors bg-neutral-50 text-neutral-400 group-hover:bg-neutral-100">
                             {method.icon && <method.icon className="w-5 h-5" />}
                           </div>
                         )}
-                        
+
                         <span className="font-bold text-base">{method.label}</span>
-                        
-                        {method.isNew && (
-                          <div className="bg-white rounded-full px-2 py-0.5 flex items-center gap-1 shadow-sm">
-                             <div className="w-3 h-3 bg-purple-600 rounded-full flex items-center justify-center text-[8px] text-white">!</div>
-                             <span className="text-[9px] font-black text-purple-600 uppercase tracking-tight">¡Nuevo!</span>
-                          </div>
-                        )}
                       </div>
 
                       <div className="flex items-center gap-4">
-                        {method.isSpecial && (
-                          <div className="bg-purple-600 text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md shadow-purple-600/30">
-                            Activar
-                          </div>
-                        )}
-                        {!method.isSpecial && (
-                          <div className="w-5 h-5 rounded-full border-2 border-neutral-200" />
-                        )}
+                        <div className="w-5 h-5 rounded-full border-2 border-neutral-200" />
                       </div>
                     </button>
                   ))}
@@ -269,8 +212,8 @@ export function CobrarContent() {
                   {/* BARRA DEL METODO ACTIVO */}
                   <div className="flex items-center justify-between p-4 bg-white border border-neutral-200 rounded-2xl shadow-sm">
                      <div className="flex items-center gap-3">
-                        <button 
-                          onClick={() => { setSelectedMethod(null); setPhone(""); }}
+                        <button
+                          onClick={() => { setSelectedMethod(null); setPhone(""); setPaymentLink(null); setLinkCopied(false); }}
                           className="p-1 hover:bg-neutral-100 rounded-lg transition-colors text-neutral-500"
                         >
                           <ChevronLeft className="w-5 h-5" />
@@ -289,15 +232,14 @@ export function CobrarContent() {
                   <div className="space-y-6">
                     
                     {/* TEXTOS INFORMATIVOS SEGUN METODO */}
-                    {(selectedMethod === "link" || selectedMethod === "whatsapp") && (
+                    {selectedMethod === "link" && (
                       <p className="text-sm text-neutral-600">
-                        <span className="font-bold">Importante:</span> Recuerda que para usar éste medio tu cliente debe tener la aplicación de Whatsapp en su dispositivo, allí le llegara el link para realizar el pago.
+                        <span className="font-bold">Importante:</span> Generamos un link de pago que puedes copiar y compartir con tu cliente por el medio que prefieras.
                       </p>
                     )}
-
-                    {selectedMethod === "transfiya" && (
+                    {selectedMethod === "whatsapp" && (
                       <p className="text-sm text-neutral-600">
-                        <span className="font-bold">Recuerda:</span> El número de celular de tu cliente debe estar asociado a una cuenta de ahorros de los bancos autorizados para hacer el pago. <span className="text-[#00d2ff] font-bold cursor-pointer hover:underline">¡Aprende a usar Transfiya!</span>
+                        <span className="font-bold">Importante:</span> Recuerda que para usar éste medio tu cliente debe tener la aplicación de WhatsApp en su dispositivo, allí le llegará el link para realizar el pago.
                       </p>
                     )}
 
@@ -307,21 +249,15 @@ export function CobrarContent() {
                         <p className="text-sm text-neutral-500 text-center">
                           El <span className="font-bold">QR de Bancolombia</span> ya no está disponible. Muy pronto podrás disfrutar del <span className="font-bold text-neutral-800">nuevo QR de Refácil</span>, con el que tendrás la opción de recargar saldo desde más de 12 bancos, incluyendo Bancolombia.
                         </p>
-                        <p className="text-sm text-neutral-500 text-center">
-                          Mientras tanto, te invitamos a usar <span className="font-bold text-neutral-800">Transfiya</span>, una manera <span className="font-bold text-neutral-800">más rápida, sencilla y segura</span> de recargar tu plataforma Refácil:
-                        </p>
-                        <p className="text-sm text-neutral-600 mt-4">
-                          <span className="font-bold">Importante:</span> El número de celular de tu cliente debe estar asociado a una cuenta de ahorros de los bancos autorizados para hacer el pago. <span className="text-[#00d2ff] font-bold cursor-pointer hover:underline">¡Aprende a usar Transfiya!</span>
-                        </p>
                       </div>
                     )}
 
                     {/* INPUT CELULAR COMUN */}
                     {selectedMethod !== "qr" && (
                       <div>
-                        <label className="block text-sm text-neutral-600 mb-2">{selectedMethod === "transfiya" || selectedMethod === "bancolombia" ? "Numero de teléfono *" : "Teléfono *"}</label>
-                        <input 
-                          type="text" 
+                        <label className="block text-sm text-neutral-600 mb-2">{selectedMethod === "bancolombia" ? "Numero de teléfono *" : "Teléfono *"}</label>
+                        <input
+                          type="text"
                           placeholder="3200000000"
                           className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white shadow-sm"
                           value={phone}
@@ -331,9 +267,15 @@ export function CobrarContent() {
                     )}
 
                     {/* CAJAS NEGRAS DE AVISO (RATES) */}
-                    {(selectedMethod === "transfiya" || selectedMethod === "bancolombia") && (
+                    {selectedMethod === "bancolombia" && (
                       <div className="bg-black text-white p-5 rounded-2xl text-xs leading-relaxed">
-                        *Montos {selectedMethod === "transfiya" ? "iguales o " : ""}superiores a <span className="font-bold">$20.000</span>, no tiene{selectedMethod === "bancolombia" ? "n" : ""} costo adicional, en cambio si es inferior, la entidad te descuenta <span className="font-bold">{selectedMethod === "transfiya" ? "$500" : "1%"}</span> del valor ingresado.
+                        *Montos superiores a <span className="font-bold">$20.000</span>, no tienen costo adicional, en cambio si es inferior, la entidad te descuenta <span className="font-bold">1%</span> del valor ingresado.
+                      </div>
+                    )}
+
+                    {selectedMethod === "link" && paymentLink && (
+                      <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-600 break-all">
+                        {paymentLink}
                       </div>
                     )}
 
@@ -347,9 +289,15 @@ export function CobrarContent() {
                         {payMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Cobrar"}
                       </button>
 
-                      {(selectedMethod === "link" || selectedMethod === "whatsapp") && (
-                        <button className="px-10 py-3 border border-neutral-300 text-neutral-600 font-bold rounded-full hover:bg-neutral-50 transition-colors w-full sm:w-auto">
-                          Copiar link
+                      {selectedMethod === "link" && paymentLink && (
+                        <button
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(paymentLink);
+                            setLinkCopied(true);
+                          }}
+                          className="px-10 py-3 border border-neutral-300 text-neutral-600 font-bold rounded-full hover:bg-neutral-50 transition-colors w-full sm:w-auto"
+                        >
+                          {linkCopied ? "¡Copiado!" : "Copiar link"}
                         </button>
                       )}
                     </div>
@@ -359,7 +307,6 @@ export function CobrarContent() {
               )}
             </div>
           </div>
-        )}
       </div>
 
       {/* Right Sidebar - Recent Payments (Sticky) */}

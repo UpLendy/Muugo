@@ -1,27 +1,48 @@
 "use client";
 
 import React from "react";
-import { 
-  TrendingUp, 
-  ChevronRight, 
-  PlusCircle, 
+import { useRouter } from "next/navigation";
+import {
+  TrendingUp,
+  ChevronRight,
+  PlusCircle,
   Calendar,
   MessageCircle,
   Download,
+  HandCoins,
   Loader2
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { dashboardService } from "@/services/dashboard.service";
 
+const toDateInput = (d: Date) => d.toISOString().slice(0, 10);
+
 export function DashboardContent() {
+  const router = useRouter();
+  const today = React.useMemo(() => new Date(), []);
+  const weekAgo = React.useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return d;
+  }, []);
+
+  const [from, setFrom] = React.useState(toDateInput(weekAgo));
+  const [to, setTo] = React.useState(toDateInput(today));
+
   const { data: summaryResponse, isLoading } = useQuery({
-    queryKey: ['dashboardSummary'],
-    queryFn: () => dashboardService.getSummary(),
+    queryKey: ['dashboardSummary', from, to],
+    queryFn: () => dashboardService.getSummary({ from, to }),
   });
 
-  const summary = summaryResponse?.data;
-  const revenueCents = summary?.orders?.revenueCents || 0;
-  const revenueFormatted = new Intl.NumberFormat('es-CO').format(revenueCents / 100);
+  const summary = summaryResponse;
+  const salesRevenueCents = summary?.sells?.collectedCents || 0;
+  const salesRevenueFormatted = new Intl.NumberFormat('es-CO').format(salesRevenueCents / 100);
+  const totalCollectedCents = (summary?.charges?.collectedCents || 0) + (summary?.sells?.collectedCents || 0);
+  const totalCollectedFormatted = new Intl.NumberFormat('es-CO').format(totalCollectedCents / 100);
+
+  const dailyRevenue: { date: string; cents: number }[] = summary?.dailyRevenue || [];
+  const maxDailyCents = Math.max(1, ...dailyRevenue.map((d) => d.cents));
+  const dayLabels = ["D", "L", "M", "X", "J", "V", "S"];
 
   return (
     <div className="flex flex-1 gap-8 p-8">
@@ -39,53 +60,68 @@ export function DashboardContent() {
                 <h2 className="text-2xl font-black text-neutral-900">Total ventas</h2>
                 <div className="px-3 py-1 bg-neutral-100 rounded-full text-xs font-bold text-neutral-400 font-mono flex items-center gap-2">
                   {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                  $ {revenueFormatted}
+                  $ {salesRevenueFormatted}
                 </div>
               </div>
-              <p className="text-sm text-neutral-500">Visualiza tus ventas de la semana hasta el día de ayer</p>
+              <p className="text-sm text-neutral-500">Visualiza tus ventas de los últimos 7 días</p>
             </div>
           </div>
 
           <div className="w-full aspect-[21/9] bg-neutral-50 rounded-3xl border border-neutral-100 flex items-center justify-center relative overflow-hidden group">
-            {/* Mock Chart representation */}
-            <div className="absolute inset-0 flex items-end justify-around px-12 py-8">
-              {[40, 60, 45, 90, 65, 80, 55].map((h, i) => (
-                <div 
-                  key={i} 
-                  className="w-12 bg-gradient-to-t from-[#eb0028] to-[#ff4d6d] rounded-t-lg transition-all duration-500 group-hover:opacity-80"
-                  style={{ height: `${h}%` }}
-                />
-              ))}
-            </div>
-            <div className="relative text-neutral-300 font-medium z-10 bg-white/80 backdrop-blur-sm px-6 py-2 rounded-full border border-neutral-100 shadow-sm">
-              Gráfico de actividad semanal
-            </div>
+            {dailyRevenue.length > 0 ? (
+              <div className="absolute inset-0 flex items-end justify-around px-12 py-8">
+                {dailyRevenue.map((d, i) => {
+                  const dayOfWeek = new Date(d.date + 'T00:00:00').getDay();
+                  const heightPct = Math.max(4, (d.cents / maxDailyCents) * 100);
+                  return (
+                    <div key={d.date} className="flex flex-col items-center gap-2 h-full justify-end">
+                      <div
+                        className="w-12 bg-gradient-to-t from-[#eb0028] to-[#ff4d6d] rounded-t-lg transition-all duration-500 group-hover:opacity-80"
+                        style={{ height: `${heightPct}%` }}
+                        title={`$ ${new Intl.NumberFormat('es-CO').format(d.cents / 100)}`}
+                      />
+                      <span className="text-[10px] font-bold text-neutral-400">{dayLabels[dayOfWeek]}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="relative text-neutral-300 font-medium z-10 bg-white/80 backdrop-blur-sm px-6 py-2 rounded-full border border-neutral-100 shadow-sm">
+                {isLoading ? "Cargando actividad..." : "Sin actividad en este rango"}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Quick Access Section */}
         <div className="space-y-6">
           <h2 className="text-2xl font-black text-neutral-900">Tus accesos directos</h2>
-          
+
           <div className="grid grid-cols-2 gap-4">
             {/* Card 1 */}
-            <div className="p-6 bg-white border border-neutral-100 rounded-3xl hover:shadow-xl hover:shadow-[#eb0028]/5 transition-all group flex flex-col justify-between h-40">
+            <button
+              onClick={() => router.push('/cobrar')}
+              className="text-left p-6 bg-white border border-neutral-100 rounded-3xl hover:shadow-xl hover:shadow-[#eb0028]/5 transition-all group flex flex-col justify-between h-40 cursor-pointer"
+            >
               <div className="flex justify-between items-start">
-                <div className="w-12 h-12 rounded-2xl bg-neutral-50 flex items-center justify-center text-[#eb0028] font-black text-xl italic tracking-tighter">
-                  Br-B
+                <div className="w-12 h-12 rounded-2xl bg-[#eb0028] flex items-center justify-center text-white">
+                  <HandCoins className="w-6 h-6" />
                 </div>
                 <div className="w-8 h-8 rounded-full bg-neutral-50 flex items-center justify-center self-center group-hover:bg-[#eb0028] group-hover:text-white transition-colors">
                   <ChevronRight className="w-5 h-5" />
                 </div>
               </div>
               <div className="space-y-1">
-                <p className="font-medium text-neutral-900">Bre-B</p>
-                <p className="text-xs text-neutral-400">Crea y administra tus llaves</p>
+                <p className="font-medium text-neutral-900">Cobrar</p>
+                <p className="text-xs text-neutral-400">Cobra a tus clientes fácil y rápido</p>
               </div>
-            </div>
+            </button>
 
             {/* Card 2 */}
-            <div className="p-6 bg-white border border-neutral-100 rounded-3xl hover:shadow-xl hover:shadow-[#658cff]/5 transition-all group flex flex-col justify-between h-40">
+            <button
+              onClick={() => router.push('/cargar')}
+              className="text-left p-6 bg-white border border-neutral-100 rounded-3xl hover:shadow-xl hover:shadow-[#658cff]/5 transition-all group flex flex-col justify-between h-40 cursor-pointer"
+            >
               <div className="flex justify-between items-start">
                 <div className="w-12 h-12 rounded-2xl bg-[#658cff] flex items-center justify-center text-white">
                   <Download className="w-6 h-6" />
@@ -98,7 +134,7 @@ export function DashboardContent() {
                 <p className="font-medium text-neutral-900">Cargar</p>
                 <p className="text-xs text-neutral-400">Recarga tu inventario y saldo</p>
               </div>
-            </div>
+            </button>
           </div>
         </div>
 
@@ -129,21 +165,54 @@ export function DashboardContent() {
         </div>
 
         <div className="space-y-6">
-          <button className="w-full bg-white border border-neutral-200 rounded-2xl p-4 flex items-center justify-between hover:border-[#eb0028]/30 transition-colors">
-            <div className="flex items-center gap-3">
+          <div className="w-full bg-white border border-neutral-200 rounded-2xl p-4">
+            <div className="flex items-center gap-3 mb-3">
               <Calendar className="w-5 h-5 text-neutral-400" />
-              <div className="text-left">
-                <p className="text-[10px] text-neutral-400 uppercase font-black tracking-widest">Rango de fechas</p>
-                <p className="text-sm font-bold text-neutral-900">2026/03/21 - 2026/04/20</p>
+              <p className="text-[10px] text-neutral-400 uppercase font-black tracking-widest">Rango de fechas</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={from}
+                max={to}
+                onChange={(e) => setFrom(e.target.value)}
+                className="flex-1 text-sm font-bold text-neutral-900 border border-neutral-100 rounded-xl px-3 py-2 focus:outline-none focus:border-[#eb0028]/40"
+              />
+              <span className="text-neutral-300">–</span>
+              <input
+                type="date"
+                value={to}
+                min={from}
+                max={toDateInput(today)}
+                onChange={(e) => setTo(e.target.value)}
+                className="flex-1 text-sm font-bold text-neutral-900 border border-neutral-100 rounded-xl px-3 py-2 focus:outline-none focus:border-[#eb0028]/40"
+              />
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
+              <div className="w-16 h-16 rounded-full border-4 border-t-[#658cff] border-neutral-100 animate-spin" />
+              <p className="text-neutral-400 font-medium">Cargando resumen...</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="bg-white border border-neutral-200 rounded-2xl p-4">
+                <p className="text-[10px] text-neutral-400 uppercase font-black tracking-widest">Recaudado</p>
+                <p className="text-xl font-black text-neutral-900">$ {totalCollectedFormatted}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white border border-neutral-200 rounded-2xl p-4">
+                  <p className="text-[10px] text-neutral-400 uppercase font-black tracking-widest">Cobros</p>
+                  <p className="text-lg font-bold text-neutral-900">{summary?.charges?.total ?? 0}</p>
+                </div>
+                <div className="bg-white border border-neutral-200 rounded-2xl p-4">
+                  <p className="text-[10px] text-neutral-400 uppercase font-black tracking-widest">Ventas</p>
+                  <p className="text-lg font-bold text-neutral-900">{summary?.sells?.total ?? 0}</p>
+                </div>
               </div>
             </div>
-            <ChevronRight className="w-5 h-5 text-neutral-300" />
-          </button>
-
-          <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
-            <div className="w-16 h-16 rounded-full border-4 border-t-[#658cff] border-neutral-100 animate-spin" />
-            <p className="text-neutral-400 font-medium">Cargando resumen...</p>
-          </div>
+          )}
         </div>
 
         {/* WhatsApp Float Mockup */}

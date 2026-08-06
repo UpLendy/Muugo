@@ -10,7 +10,7 @@ export default function CargarPage() {
       <Sidebar />
 
       {/* Main Content - Pushed by sidebar width */}
-      <div className="flex-1 ml-64 flex flex-col min-h-screen">
+      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen pt-16 lg:pt-0">
         <Header showBalances={true} />
         
         <main className="flex-1 flex flex-col">

@@ -17,10 +17,22 @@ export function CobrarResultadoContent() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
 
-  const { data: chargesData, isLoading } = useQuery({
+  const chargeId = typeof window !== "undefined" ? sessionStorage.getItem("dismanet:lastChargeId") : null;
+
+  const { data: chargeByIdData, isLoading: isLoadingById } = useQuery({
+    queryKey: ["charges", "byId", chargeId],
+    queryFn: () => chargeService.get(chargeId as string),
+    enabled: !!chargeId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.data?.status;
+      return status && PENDING_STATUSES.includes(status) ? 3000 : false;
+    },
+  });
+
+  const { data: chargesData, isLoading: isLoadingLatest } = useQuery({
     queryKey: ["charges", "latest", user?.id],
     queryFn: () => chargeService.list({ limit: 1 }),
-    enabled: !!user?.id,
+    enabled: !!user?.id && !chargeId,
     refetchInterval: (query) => {
       const list = Array.isArray(query.state.data)
         ? query.state.data
@@ -30,8 +42,9 @@ export function CobrarResultadoContent() {
     },
   });
 
+  const isLoading = chargeId ? isLoadingById : isLoadingLatest;
   const charges = Array.isArray(chargesData) ? chargesData : (chargesData?.items || chargesData?.data || []);
-  const latest = charges[0];
+  const latest = chargeId ? chargeByIdData?.data : charges[0];
   const status: string | undefined = latest?.status;
 
   const goToComercio = () => router.push("/cobrar");

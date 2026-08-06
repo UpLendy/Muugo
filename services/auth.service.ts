@@ -22,6 +22,11 @@ export const authService = {
     return data;
   },
 
+  async updateProfile(profileData: { firstName: string; lastName: string; phoneNumber?: string }): Promise<User> {
+    const { data } = await apiClient.patch<User>('/auth/me', profileData);
+    return data;
+  },
+
   async updateAvatar(avatarUrl: string): Promise<User> {
     const { data } = await apiClient.patch<User>('/auth/avatar', { avatarUrl });
     return data;

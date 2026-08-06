@@ -7,7 +7,7 @@ export default function AdminPage() {
   return (
     <div className="flex min-h-screen bg-neutral-50 text-neutral-900">
       <Sidebar />
-      <div className="flex-1 ml-64 flex flex-col min-h-screen">
+      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen pt-16 lg:pt-0">
         <Header showBalances={true} />
         <main className="flex-1 flex flex-col">
           <AdminContent />

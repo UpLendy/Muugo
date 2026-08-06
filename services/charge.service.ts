@@ -38,9 +38,4 @@ export const chargeService = {
     const { data } = await apiClient.get('/charges/pse-banks');
     return data;
   },
-
-  getTransfiyaBanks: async () => {
-    const { data } = await apiClient.get('/charges/transfiya-banks/send');
-    return data;
-  },
 };

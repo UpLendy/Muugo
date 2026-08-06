@@ -17,10 +17,22 @@ export function CargarResultadoContent() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
 
-  const { data: topupsData, isLoading } = useQuery({
+  const topupId = typeof window !== "undefined" ? sessionStorage.getItem("dismanet:lastTopupId") : null;
+
+  const { data: topupByIdData, isLoading: isLoadingById } = useQuery({
+    queryKey: ["topups", "byId", topupId],
+    queryFn: () => sellerBalanceService.getTopup(topupId as string),
+    enabled: !!topupId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.data?.status;
+      return status && PENDING_STATUSES.includes(status) ? 3000 : false;
+    },
+  });
+
+  const { data: topupsData, isLoading: isLoadingLatest } = useQuery({
     queryKey: ["topups", "latest", user?.id],
     queryFn: () => sellerBalanceService.getTopups({ limit: 1 }),
-    enabled: !!user?.id,
+    enabled: !!user?.id && !topupId,
     refetchInterval: (query) => {
       const data = query.state.data;
       const list = Array.isArray(data) ? data : (data?.items || data?.data || []);
@@ -29,8 +41,9 @@ export function CargarResultadoContent() {
     },
   });
 
+  const isLoading = topupId ? isLoadingById : isLoadingLatest;
   const topups = Array.isArray(topupsData) ? topupsData : (topupsData?.items || topupsData?.data || []);
-  const latest = topups[0];
+  const latest = topupId ? topupByIdData?.data : topups[0];
   const status: string | undefined = latest?.status;
 
   const goToComercio = () => router.push("/cargar");

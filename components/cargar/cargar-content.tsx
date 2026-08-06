@@ -1,14 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
-import { 
-  QrCode, 
+import {
+  QrCode,
   ChevronRight,
   ChevronLeft,
   FileText,
   CreditCard,
   Banknote,
-  Zap,
   Globe,
   Loader2,
   Download
@@ -27,8 +26,6 @@ const loadMethods = [
   { id: "133", label: "Transferencia", icon: Globe, logo: "pse" },
   { id: "bancolombia", label: "Bancolombia", logo: "bancolombia", barLabel: "Directo al banco" },
   { id: "130", label: "Nequi", logo: "nequi", barLabel: "Notificación al ..." },
-  { id: "131", label: "Daviplata", logo: "daviplata", barLabel: "Notificación al ..." },
-  { id: "transfiya", label: "Transfiya", icon: Zap, logo: "transfiya", barLabel: "Notificación al ..." },
   { id: "qr", label: "QR", icon: QrCode, barLabel: "Notificación al ..." },
   { id: "efectivo", label: "Efectivo", icon: Banknote },
 ];
@@ -75,11 +72,9 @@ export function CargarContent() {
       // "bancolombia" no tiene paymentMethodId propio en Refácil: se deja sin
       // mapear a propósito y cae al link de pago genérico.
       const methodIdMap: Record<string, number> = {
-        "130": 130,       // Nequi
-        "131": 131,       // Daviplata
-        "133": 133,       // PSE
-        "transfiya": 155, // Transfiya Recaudo
-        "qr": 248,        // QR Interoperable
+        "130": 130, // Nequi
+        "133": 133, // PSE
+        "qr": 248,  // QR Interoperable
       };
       const methodIdNum = selectedMethod ? methodIdMap[selectedMethod] : undefined;
 
@@ -111,6 +106,9 @@ export function CargarContent() {
       return paymentRes.data;
     },
     onSuccess: (data) => {
+      if (data?.topupId) {
+        sessionStorage.setItem('dismanet:lastTopupId', data.topupId);
+      }
       if (data?.url) {
         window.location.href = data.url;
       } else {
@@ -119,9 +117,9 @@ export function CargarContent() {
         setSelectedMethod(null);
       }
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error(error);
-      alert("Hubo un error al procesar la carga.");
+      alert(`Error: ${error?.response?.data?.error?.message || error?.message || "Hubo un error al procesar la carga."}`);
     }
   });
 
@@ -137,7 +135,7 @@ export function CargarContent() {
 
   const activeMethod = loadMethods.find(m => m.id === selectedMethod);
 
-  const requiresPhone = ["130", "131", "133", "transfiya", "qr"].includes(selectedMethod || "");
+  const requiresPhone = ["130", "133", "qr"].includes(selectedMethod || "");
   const isPhoneValid = phone.replace(/\D/g, '').length >= 10;
 
   const renderActiveMethodIcon = (method: any) => {
@@ -152,14 +150,8 @@ export function CargarContent() {
     if (method.logo === "bancolombia") {
       return <span className="font-black text-xs">Bancolombia</span>;
     }
-    if (method.logo === "transfiya") {
-      return <span className="font-black italic text-blue-600 text-sm">transfiya</span>;
-    }
     if (method.logo === "nequi") {
       return <span className="font-black text-pink-600 text-sm">Nequi</span>;
-    }
-    if (method.logo === "daviplata") {
-      return <span className="font-black text-red-600 text-sm">Daviplata</span>;
     }
     if (method.icon) {
       const Icon = method.icon;
@@ -247,17 +239,9 @@ export function CargarContent() {
                         <div className="w-8 h-8 flex items-center justify-center font-black text-[10px] leading-none">
                           Bancolombia
                         </div>
-                      ) : method.logo === "transfiya" ? (
-                        <div className="w-8 h-8 flex items-center justify-center italic font-black text-blue-600 text-xs">
-                          transfiya
-                        </div>
                       ) : method.logo === "nequi" ? (
                         <div className="w-8 h-8 flex items-center justify-center font-black text-pink-600 text-xs">
                           Nequi
-                        </div>
-                      ) : method.logo === "daviplata" ? (
-                        <div className="w-8 h-8 flex items-center justify-center font-black text-red-600 text-xs">
-                          Daviplata
                         </div>
                       ) : (
                         <div className="w-8 h-8 rounded-lg bg-neutral-50 text-neutral-400 group-hover:bg-neutral-100 flex items-center justify-center transition-colors">
@@ -416,23 +400,18 @@ export function CargarContent() {
                       </div>
                     )}
                     
-                    {(selectedMethod === "130" || selectedMethod === "131" || selectedMethod === "qr") && (
+                    {(selectedMethod === "130" || selectedMethod === "qr") && (
                       <p className="text-sm text-neutral-600">
                         <span className="font-bold">Recuerda:</span> Tu transacción está siendo procesada. Al finalizar te saldrá una pantalla "Inscribe tu comercio" marca "Acepto" en el botón para que puedas evitar varios pasos.
                       </p>
                     )}
-                    {selectedMethod === "transfiya" && (
-                      <p className="text-sm text-neutral-600">
-                        <span className="font-bold">Recuerda:</span> El número de celular de tu cliente debe estar asociado a una cuenta de ahorros de los bancos autorizados para hacer el pago. <span className="text-[#00d2ff] font-bold cursor-pointer hover:underline">¡Aprende a usar Transfiya!</span>
-                      </p>
-                    )}
 
                     {/* FORM CELULAR (SOLO PARA MÉTODOS QUE LO REQUIERAN) */}
-                    {(selectedMethod === "130" || selectedMethod === "131" || selectedMethod === "transfiya" || selectedMethod === "qr") && (
+                    {(selectedMethod === "130" || selectedMethod === "qr") && (
                       <div>
                         <label className="block text-sm text-neutral-600 mb-2">Número de teléfono celular *</label>
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           placeholder="312 000 0000"
                           className="w-full max-w-sm p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00d2ff]/20 focus:border-[#00d2ff] bg-white shadow-sm"
                           value={phone}
@@ -443,9 +422,7 @@ export function CargarContent() {
 
                     {/* ALERTS */}
                     <div className="bg-black text-white p-5 rounded-2xl text-xs leading-relaxed max-w-lg mt-6">
-                      {selectedMethod === "transfiya" ? (
-                        <>*Montos iguales o superiores a <span className="font-bold">$20.000</span>, no tiene costo adicional, en cambio si es inferior, la entidad te descuenta <span className="font-bold">$500</span>.</>
-                      ) : (selectedMethod === "130" || selectedMethod === "131" || selectedMethod === "qr") ? (
+                      {(selectedMethod === "130" || selectedMethod === "qr") ? (
                         <>*Montos superiores a <span className="font-bold">$20.000</span>, no tiene costo adicional, en cambio si es inferior, la entidad te descuenta <span className="font-bold">$500</span>.</>
                       ) : (
                         <>*Montos superiores a <span className="font-bold">$50.000</span>, no tienen costo adicional, en cambio si es inferior, la entidad te descuenta <span className="font-bold">$500</span>.</>
