@@ -1,9 +1,9 @@
 import React from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
-import { DashboardContent } from "@/components/dashboard/dashboard-content";
+import { VenderContent } from "@/components/vender/vender-content";
 
-export default function DashboardPage() {
+export default function VenderPage() {
   return (
     <div className="flex min-h-screen bg-neutral-50 text-neutral-900">
       {/* Sidebar - Fixed width */}
@@ -11,15 +11,15 @@ export default function DashboardPage() {
 
       {/* Main Content - Pushed by sidebar width */}
       <div className="flex-1 lg:ml-64 flex flex-col min-h-screen pt-16 lg:pt-0">
-        <Header />
+        <Header showBalances={true} />
         
         <main className="flex-1 flex flex-col">
-          <DashboardContent />
+          <VenderContent />
         </main>
 
         {/* Footer info */}
         <footer className="p-6 text-center text-neutral-400 text-xs border-t border-neutral-100 bg-white">
-          <p>© 2026 Muugo. Todos los derechos reservados. Desarrollado por UpLendy.</p>
+          <p>© 2026 Dismanet. Todos los derechos reservados. Desarrollado por UpLendy.</p>
         </footer>
       </div>
     </div>

@@ -16,17 +16,18 @@ const museoSansFallback = Montserrat({
 });
 
 export const metadata: Metadata = {
-  title: "Muugo | Próximamente",
-  description:
-    "Estamos construyendo algo increíble. Muugo estará disponible muy pronto.",
-  keywords: ["Muugo", "próximamente", "en construcción"],
+  title: "Muugo",
+  description: "Muugo — recarga, cobra y vende en un solo lugar.",
+  keywords: ["Muugo"],
   openGraph: {
-    title: "Muugo | Próximamente",
-    description:
-      "Estamos construyendo algo increíble. Muugo estará disponible muy pronto.",
+    title: "Muugo",
+    description: "Muugo — recarga, cobra y vende en un solo lugar.",
     type: "website",
   },
 };
+
+import { QueryProvider } from "@/providers/query-provider";
+import { ProtectedRoute } from "@/components/auth/protected-route";
 
 export default function RootLayout({
   children,
@@ -39,7 +40,11 @@ export default function RootLayout({
       className={`${alexandria.variable} ${museoSansFallback.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col noise-overlay bg-neutral-50 text-neutral-900 selection:bg-[#eb0028] selection:text-white">
-        {children}
+        <QueryProvider>
+          <ProtectedRoute>
+            {children}
+          </ProtectedRoute>
+        </QueryProvider>
       </body>
     </html>
   );

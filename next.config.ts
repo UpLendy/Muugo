@@ -33,6 +33,7 @@ const cspHeader = `
 `;
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["lvh.me"],
   async headers() {
     return [
       {
