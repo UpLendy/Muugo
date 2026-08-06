@@ -1,10 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, XCircle, Loader2, ArrowLeft } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chargeService } from "@/services/charge.service";
 
 const PENDING_STATUSES = ["pending", "processing"];
@@ -16,6 +16,7 @@ const formatCurrency = (cents: number) =>
 export function CobrarResultadoContent() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
+  const queryClient = useQueryClient();
 
   const chargeId = typeof window !== "undefined" ? sessionStorage.getItem("dismanet:lastChargeId") : null;
 
@@ -46,6 +47,13 @@ export function CobrarResultadoContent() {
   const charges = Array.isArray(chargesData) ? chargesData : (chargesData?.items || chargesData?.data || []);
   const latest = chargeId ? chargeByIdData?.data : charges[0];
   const status: string | undefined = latest?.status;
+
+  useEffect(() => {
+    if (status === "approved") {
+      queryClient.invalidateQueries({ queryKey: ["storeBalance"] });
+      queryClient.invalidateQueries({ queryKey: ["sellerBalance"] });
+    }
+  }, [status, queryClient]);
 
   const goToComercio = () => router.push("/cobrar");
 

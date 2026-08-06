@@ -56,20 +56,15 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile top bar with hamburger toggle */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-neutral-100 flex items-center justify-between px-4 z-40">
-        <div className="flex items-center gap-2">
-          <div className="relative w-8 h-8 overflow-hidden rounded-lg">
-            <Image
-              src="/logo-muugo.jpeg"
-              alt="Muugo Logo"
-              fill
-              sizes="32px"
-              className="object-cover"
-            />
-          </div>
-          <span className="text-lg font-black tracking-tight text-neutral-900">
-            muugo
-          </span>
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-neutral-50 border-b border-neutral-100 flex items-center justify-between px-4 z-40">
+        <div className="relative h-8 w-28">
+          <Image
+            src="/logo-muugo.jpeg"
+            alt="Muugo"
+            fill
+            sizes="112px"
+            className="object-contain rounded-md"
+          />
         </div>
         <button
           onClick={() => setIsOpen(true)}
@@ -90,26 +85,21 @@ export function Sidebar() {
 
       <aside
         className={cn(
-          "w-64 h-screen bg-white border-r border-neutral-100 flex flex-col fixed left-0 top-0 z-50 transition-transform duration-300",
+          "w-64 h-screen bg-neutral-50 border-r border-neutral-100 flex flex-col fixed left-0 top-0 z-50 transition-transform duration-300",
           "lg:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         {/* Logo */}
         <div className="p-8 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative w-10 h-10 overflow-hidden rounded-lg">
-              <Image
-                src="/logo-muugo.jpeg"
-                alt="Muugo Logo"
-                fill
-                sizes="40px"
-                className="object-cover"
-              />
-            </div>
-            <span className="text-2xl font-black tracking-tight text-neutral-900">
-              muugo
-            </span>
+          <div className="relative h-9 w-32">
+            <Image
+              src="/logo-muugo.jpeg"
+              alt="Muugo"
+              fill
+              sizes="128px"
+              className="object-contain rounded-md"
+            />
           </div>
           <button
             onClick={closeMenu}

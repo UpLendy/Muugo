@@ -323,6 +323,7 @@ export function VenderContent() {
     },
     onSuccess: (sell: any) => {
       queryClient.invalidateQueries({ queryKey: ['sells'] });
+      queryClient.invalidateQueries({ queryKey: ['sellerBalance'] });
       if (sell?.status === 'failed') {
         alert(`La venta no se pudo completar: ${sell?.errorMessage || 'Refácil rechazó la transacción'}`);
       } else if (sell?.status === 'completed') {

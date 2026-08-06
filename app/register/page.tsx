@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useMutation } from "@tanstack/react-query";
 import { authService } from "@/services/auth.service";
@@ -57,10 +58,17 @@ export default function RegisterPage() {
         <div className="w-full max-w-md space-y-8 relative z-10 my-auto py-10">
           
           {/* Logo solo en móvil */}
-          <div className="lg:hidden mb-8 text-center">
-             <span className="text-3xl font-black tracking-tighter text-neutral-900 flex items-center justify-center gap-1">
-               <span className="text-[#eb0028] text-4xl">D</span>ismanet
-             </span>
+          <div className="lg:hidden mb-8 flex justify-center">
+            <div className="relative h-12 w-40">
+              <Image
+                src="/logo-muugo.jpeg"
+                alt="Muugo"
+                fill
+                sizes="160px"
+                className="object-contain rounded-lg"
+                priority
+              />
+            </div>
           </div>
 
           <div>
@@ -195,24 +203,41 @@ export default function RegisterPage() {
       {/* Lado Derecho - Branding */}
       <div className="hidden lg:flex w-1/2 bg-neutral-900 relative items-center justify-center overflow-hidden">
         {/* Abstract Background Elements */}
-        <div className="absolute top-0 left-0 w-full h-full opacity-20">
-          <div className="absolute -top-40 -right-40 w-96 h-96 bg-[#00d2ff] rounded-full blur-[100px]" />
-          <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-[#eb0028] rounded-full blur-[120px]" />
-        </div>
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(120% 100% at 85% -10%, rgba(0,210,255,0.22), transparent 60%), radial-gradient(120% 100% at 5% 110%, rgba(235,0,40,0.28), transparent 60%)",
+          }}
+        />
         
         <div className="relative z-10 p-12 text-center">
-          <div className="mb-10 inline-block">
-             <span className="text-4xl font-black tracking-tighter text-white flex items-center justify-center gap-1">
-               <span className="text-[#eb0028] text-5xl">D</span>ismanet
-             </span>
+          <div className="relative mb-10 inline-block">
+            <div
+              className="pointer-events-none absolute -inset-20 rounded-full"
+              style={{
+                background:
+                  "radial-gradient(circle, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.55) 40%, transparent 72%)",
+              }}
+            />
+            <div className="relative h-14 w-48">
+              <Image
+                src="/logo-muugo-dark.jpeg"
+                alt="Muugo"
+                fill
+                sizes="192px"
+                className="object-contain rounded-xl"
+                priority
+              />
+            </div>
           </div>
-          <h2 className="text-4xl font-black text-white mb-6 leading-tight">
+          <h2 className="relative z-10 text-4xl font-black text-white mb-6 leading-tight">
             Multiplica tus <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#00d2ff] to-[#658cff]">
               ingresos hoy
             </span>
           </h2>
-          <p className="text-neutral-400 text-lg font-medium max-w-md mx-auto">
+          <p className="relative z-10 text-neutral-400 text-lg font-medium max-w-md mx-auto">
             Únete a miles de comercios que ya están ofreciendo servicios y ganando comisiones con nuestra plataforma.
           </p>
         </div>

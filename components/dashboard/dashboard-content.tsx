@@ -143,7 +143,7 @@ export function DashboardContent() {
           <h2 className="text-2xl font-black text-neutral-900">Publicidad</h2>
           <div className="w-full h-40 bg-gradient-to-r from-[#eb0028] to-[#658cff] rounded-3xl relative overflow-hidden flex items-center px-10">
             <div className="relative z-10 text-white space-y-2">
-              <h3 className="text-2xl font-black">Nuevos beneficios Dismanet</h3>
+              <h3 className="text-2xl font-black">Nuevos beneficios Muugo</h3>
               <p className="text-white/80 max-w-sm">Descubre las nuevas herramientas que tenemos para potenciar tu negocio.</p>
               <button className="bg-white text-[#eb0028] px-6 py-2 rounded-full font-bold text-sm hover:bg-neutral-100 transition-colors mt-2">
                 Conocer más
