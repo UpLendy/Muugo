@@ -1,10 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, XCircle, Loader2, ArrowLeft } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { sellerBalanceService } from "@/services/sellerBalance.service";
 
 const PENDING_STATUSES = ["pending", "processing"];
@@ -16,6 +16,7 @@ const formatCurrency = (cents: number) =>
 export function CargarResultadoContent() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
+  const queryClient = useQueryClient();
 
   const topupId = typeof window !== "undefined" ? sessionStorage.getItem("dismanet:lastTopupId") : null;
 
@@ -45,6 +46,12 @@ export function CargarResultadoContent() {
   const topups = Array.isArray(topupsData) ? topupsData : (topupsData?.items || topupsData?.data || []);
   const latest = topupId ? topupByIdData?.data : topups[0];
   const status: string | undefined = latest?.status;
+
+  useEffect(() => {
+    if (status === "approved") {
+      queryClient.invalidateQueries({ queryKey: ["sellerBalance"] });
+    }
+  }, [status, queryClient]);
 
   const goToComercio = () => router.push("/cargar");
 

@@ -13,7 +13,7 @@ export default function AdminPage() {
           <AdminContent />
         </main>
         <footer className="p-6 text-center text-neutral-400 text-xs border-t border-neutral-100 bg-white">
-          <p>© 2026 Dismanet. Todos los derechos reservados. Desarrollado por UpLendy.</p>
+          <p>© 2026 Muugo. Todos los derechos reservados. Desarrollado por UpLendy.</p>
         </footer>
       </div>
     </div>
