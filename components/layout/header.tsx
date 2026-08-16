@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { User as UserIcon, Bell, ArrowUpCircle, TrendingUp } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
 import { useQuery } from "@tanstack/react-query";
@@ -12,8 +13,48 @@ interface HeaderProps {
   showBalances?: boolean;
 }
 
+// El campo "description" que guarda el backend es texto técnico para debugging
+// (incluye errores crudos de Refácil) — nunca se muestra al seller. Acá se arma
+// un texto humano a partir de "type" + "referenceType", que sí son estables.
+function friendlyMovement(m: { type: string; referenceType?: string | null }): { title: string; positive: boolean } {
+  switch (m.type) {
+    case 'RESERVE':
+      return { title: 'Compra en proceso', positive: false };
+    case 'CONFIRM':
+      return { title: 'Compra completada', positive: false };
+    case 'RELEASE':
+      return { title: 'Compra cancelada, saldo devuelto', positive: true };
+    case 'CREDIT':
+      return {
+        title: m.referenceType === 'topup' ? 'Recarga acreditada' : 'Reembolso a tu saldo',
+        positive: true,
+      };
+    case 'DEBIT':
+      return { title: 'Débito de saldo', positive: false };
+    case 'ADMIN_CREDIT':
+      return { title: 'Ajuste a tu favor', positive: true };
+    case 'ADMIN_DEBIT':
+      return { title: 'Ajuste en contra', positive: false };
+    default:
+      return { title: 'Movimiento de saldo', positive: true };
+  }
+}
+
 export function Header({ showBalances = false }: HeaderProps) {
+  const router = useRouter();
   const user = useAuthStore((state) => state.user);
+  const [notifOpen, setNotifOpen] = React.useState(false);
+  const notifRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
 
   // Obtener la tienda (punto de venta) del usuario
   const { data: store } = useQuery({
@@ -36,6 +77,15 @@ export function Header({ showBalances = false }: HeaderProps) {
     queryFn: () => payoutService.getBalance(store!.id),
     enabled: !!store?.id,
   });
+
+  // Últimos movimientos de saldo, usados como feed de notificaciones
+  const { data: movementsData } = useQuery({
+    queryKey: ['sellerBalanceMovements', user?.id, 'notif'],
+    queryFn: () => sellerBalanceService.getMovements({ limit: 5 }),
+    enabled: !!user?.id && user?.roles?.includes('seller'),
+    refetchInterval: 60_000,
+  });
+  const movements = movementsData?.items ?? movementsData?.data?.items ?? [];
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(amount);
@@ -106,13 +156,57 @@ export function Header({ showBalances = false }: HeaderProps) {
 
         <div className="h-10 w-px bg-neutral-100 hidden md:block" />
 
-        <button className="relative p-2 text-neutral-400 hover:text-neutral-900 transition-colors">
-          <Bell className="w-6 h-6" />
-          {/* Mock notification dot */}
-          <span className="absolute top-2 right-2 w-2 h-2 bg-[#eb0028] rounded-full border-2 border-white" />
-        </button>
+        <div className="relative" ref={notifRef}>
+          <button
+            onClick={() => setNotifOpen((v) => !v)}
+            className="relative p-2 text-neutral-400 hover:text-neutral-900 transition-colors"
+            aria-label="Notificaciones"
+          >
+            <Bell className="w-6 h-6" />
+            {movements.length > 0 && (
+              <span className="absolute top-2 right-2 w-2 h-2 bg-[#eb0028] rounded-full border-2 border-white" />
+            )}
+          </button>
 
-        <div className="flex items-center gap-3 pl-2">
+          {notifOpen && (
+            <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-neutral-100 z-50 overflow-hidden">
+              <div className="px-4 py-3 border-b border-neutral-100 font-bold text-sm text-neutral-800">
+                Movimientos recientes
+              </div>
+              <div className="max-h-80 overflow-y-auto">
+                {movements.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-sm text-neutral-400">
+                    Sin movimientos recientes
+                  </div>
+                ) : (
+                  movements.map((m: any) => {
+                    const { title, positive } = friendlyMovement(m);
+                    return (
+                      <div key={m.id} className="px-4 py-3 border-b border-neutral-50 last:border-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-neutral-800">{title}</span>
+                          <span className={`text-sm font-bold ${positive ? "text-[#00c9cc]" : "text-neutral-500"}`}>
+                            {positive ? "+" : "-"}
+                            {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(m.amountCents) / 100)}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-neutral-300 mt-1">
+                          {new Date(m.createdAt).toLocaleString('es-CO')}
+                        </p>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={() => router.push('/cuenta')}
+          className="flex items-center gap-3 pl-2"
+          aria-label="Mi cuenta"
+        >
           {user?.avatarUrl ? (
              <img src={user.avatarUrl} alt="Avatar" className="w-10 h-10 rounded-xl object-cover shadow-lg" />
           ) : (
@@ -120,7 +214,7 @@ export function Header({ showBalances = false }: HeaderProps) {
               <UserIcon className="w-6 h-6" />
             </div>
           )}
-        </div>
+        </button>
       </div>
     </header>
   );
