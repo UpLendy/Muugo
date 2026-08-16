@@ -11,6 +11,7 @@ import {
   PlusSquare,
   BarChart3,
   Settings,
+  HelpCircle,
   User,
   LogOut,
   Menu,
@@ -32,6 +33,7 @@ const menuItems = [
   { icon: BarChart3, label: "Reportes", href: "/reportes" },
   { icon: Settings, label: "Administración", href: "/admin" },
   { icon: User, label: "Mi cuenta", href: "/cuenta" },
+  { icon: HelpCircle, label: "Ayuda", href: "/ayuda" },
 ];
 
 export function Sidebar() {
@@ -59,7 +61,7 @@ export function Sidebar() {
       <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-neutral-50 border-b border-neutral-100 flex items-center justify-between px-4 z-40">
         <div className="relative h-8 w-28">
           <Image
-            src="/logo-muugo.jpeg"
+            src="/logo-muugo.png"
             alt="Muugo"
             fill
             sizes="112px"
@@ -94,7 +96,7 @@ export function Sidebar() {
         <div className="p-8 flex items-center justify-between">
           <div className="relative h-9 w-32">
             <Image
-              src="/logo-muugo.jpeg"
+              src="/logo-muugo.png"
               alt="Muugo"
               fill
               sizes="128px"

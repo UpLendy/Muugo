@@ -17,6 +17,7 @@ import { twMerge } from "tailwind-merge";
 import { useAuthStore } from "@/store/auth-store";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { sellerBalanceService } from "@/services/sellerBalance.service";
+import { chargeService } from "@/services/charge.service";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -30,7 +31,11 @@ const loadMethods = [
   { id: "efectivo", label: "Efectivo", icon: Banknote },
 ];
 
-const bankOptions = ["Banco de Bogotá", "Bancolombia", "Davivienda", "Nequi", "BBVA Colombia", "Banco de Occidente"];
+// Fallback si Refácil no responde /payment/pse-banks (ver getPseBanks abajo)
+const FALLBACK_PSE_BANKS = [
+  { value: "1022", label: "Banco Unión Colombiano" },
+  { value: "1007", label: "Bancolombia" },
+];
 const personTypes = ["Natural", "Jurídica"];
 const documentTypes = ["Cédula de ciudadanía", "NIT", "Cédula de extranjería", "Pasaporte"];
 
@@ -61,6 +66,18 @@ export function CargarContent() {
   });
 
   const topups = Array.isArray(topupsData) ? topupsData : (topupsData?.items || topupsData?.data || []);
+
+  // Lista de bancos PSE — si Refácil falla, se usa el fallback fijo (mismos 2 bancos que había antes).
+  const { data: pseBanksData } = useQuery({
+    queryKey: ['pseBanks'],
+    queryFn: () => chargeService.getPseBanks(),
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
+  });
+  const rawPseBanks = pseBanksData?.data ?? pseBanksData ?? [];
+  const pseBanks = Array.isArray(rawPseBanks) && rawPseBanks.length > 0
+    ? rawPseBanks.map((b: any) => ({ value: String(b.value ?? b.id ?? ''), label: b.label ?? b.name ?? String(b.value ?? b.id ?? '') }))
+    : FALLBACK_PSE_BANKS;
 
   const payMutation = useMutation({
     mutationFn: async () => {
@@ -381,9 +398,9 @@ export function CargarContent() {
                             onChange={e => setBankId(e.target.value)}
                           >
                             <option value="">Seleccione un banco...</option>
-                            <option value="1022">Banco Unión Colombiano</option>
-                            <option value="1007">Bancolombia</option>
-                            {/* TODO: El backend debe proveer un endpoint para listar los bancos dinámicamente */}
+                            {pseBanks.map((b) => (
+                              <option key={b.value} value={b.value}>{b.label}</option>
+                            ))}
                           </select>
                         </div>
 

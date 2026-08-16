@@ -120,13 +120,13 @@ export function DashboardContent() {
             {/* Card 2 */}
             <button
               onClick={() => router.push('/cargar')}
-              className="text-left p-6 bg-white border border-neutral-100 rounded-3xl hover:shadow-xl hover:shadow-[#658cff]/5 transition-all group flex flex-col justify-between h-40 cursor-pointer"
+              className="text-left p-6 bg-white border border-neutral-100 rounded-3xl hover:shadow-xl hover:shadow-[#4840ff]/5 transition-all group flex flex-col justify-between h-40 cursor-pointer"
             >
               <div className="flex justify-between items-start">
-                <div className="w-12 h-12 rounded-2xl bg-[#658cff] flex items-center justify-center text-white">
+                <div className="w-12 h-12 rounded-2xl bg-[#4840ff] flex items-center justify-center text-white">
                   <Download className="w-6 h-6" />
                 </div>
-                <div className="w-8 h-8 rounded-full bg-neutral-50 flex items-center justify-center self-center group-hover:bg-[#658cff] group-hover:text-white transition-colors">
+                <div className="w-8 h-8 rounded-full bg-neutral-50 flex items-center justify-center self-center group-hover:bg-[#4840ff] group-hover:text-white transition-colors">
                   <ChevronRight className="w-5 h-5" />
                 </div>
               </div>

@@ -82,7 +82,7 @@ export default function LoginPage() {
           <div className="lg:hidden mb-8 flex justify-center">
             <div className="relative h-12 w-40">
               <Image
-                src="/logo-muugo.jpeg"
+                src="/logo-muugo.png"
                 alt="Muugo"
                 fill
                 sizes="160px"
