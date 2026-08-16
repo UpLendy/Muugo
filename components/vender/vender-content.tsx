@@ -53,7 +53,17 @@ const PARENT_GROUPS = [
     icon: Smartphone,
     bg: 'bg-[#e0ffe7]',
     text: 'text-[#1db954]',
-    categoryIds: [2, 78],
+    categoryIds: [2],
+  },
+  {
+    id: 'recargas-billeteras',
+    name: 'Recargas a billeteras',
+    icon: Wallet,
+    bg: 'bg-[#e2d5ff]',
+    text: 'text-[#9b70ff]',
+    // Dale, Daviplata, Movii, Nequi y Taxia: no son operadores telefónicos, son apps/billeteras
+    // digitales. Antes estaban mezcladas con la categoría 2 (telefonía) bajo "Recargas".
+    categoryIds: [78],
   },
   {
     id: 'pines',
@@ -88,14 +98,6 @@ const PARENT_GROUPS = [
     categoryIds: [64, 194, 195],
   },
   {
-    id: 'pagos',
-    name: 'Pagos y cobros',
-    icon: FileText,
-    bg: 'bg-[#f5edff]',
-    text: 'text-[#b080ff]',
-    categoryIds: [59, 61, 63, 71, 182, 184, 191, 205, 206, 210],
-  },
-  {
     id: 'seguros',
     name: 'Seguros y SOAT',
     icon: ShieldCheck,
@@ -125,6 +127,9 @@ const PARENT_GROUPS = [
 
 type ParentGroup = typeof PARENT_GROUPS[number];
 
+// 'billeteras', 'recargas-billeteras', 'enviar' y 'seguros' se ocultan: no están certificados con Refácil todavía.
+const UNCERTIFIED_GROUP_IDS = new Set(['billeteras', 'recargas-billeteras', 'enviar', 'seguros']);
+
 // Extrae el nombre de la marca desde imageUrl (e.g. "freefire.png" -> "FreeFire")
 function brandNameFromImageUrl(imageUrl: string | null): string {
   if (!imageUrl) return 'Otro';
@@ -137,9 +142,84 @@ function brandNameFromImageUrl(imageUrl: string | null): string {
     .join(' ');
 }
 
-// Construye la URL de la imagen del CDN de Refácil
+// Logos curados manualmente (public/brands/) para las marcas de mayor volumen,
+// ya que el CDN de imágenes de Refácil (cdn.refacil.com.co) no resuelve.
+const BRAND_LOGOS: Record<string, string> = {
+  'claro.png': '/brands/claro.svg',
+  'virgin.png': '/brands/virgin.svg',
+  'movistar.png': '/brands/movistar.svg',
+  'wom.png': '/brands/wom.svg',
+  'kalley.png': '/brands/kalley.jpg',
+  'tigo.png': '/brands/tigo.svg',
+  'wings.png': '/brands/wings.png',
+  'xbox.png': '/brands/xbox.svg',
+  'playstation.png': '/brands/playstation.svg',
+  'etb.png': '/brands/etb.svg',
+  'disney.png': '/brands/disney.svg',
+  'exito.png': '/brands/exito.svg',
+  'office.png': '/brands/office.svg',
+  'pse.png': '/brands/pse.png',
+  'netflix.png': '/brands/netflix.svg',
+  'freefire.png': '/brands/freefire.svg',
+  'spotify.png': '/brands/spotify.png',
+  'crunchyroll.png': '/brands/crunchyroll.png',
+  'tinder.png': '/brands/tinder.svg',
+  'bancolombia.png': '/brands/bancolombia.svg',
+  'directvgo.png': '/brands/directvgo.svg',
+  'daviplata.png': '/brands/daviplata.png',
+  'roblox.png': '/brands/roblox.svg',
+  'mcafee.png': '/brands/mcafee.svg',
+  'nequi.png': '/brands/nequi.svg',
+
+  // Recargas (operadores móviles virtuales colombianos)
+  'comunicamos.png': '/brands/comunicamos.png',
+  'directv.png': '/brands/directv-prepago.svg',
+  'flash.png': '/brands/flashmobile.png',
+  'iyo.png': '/brands/iyo.png',
+  'sip.png': '/brands/sipmobile.png',
+  'unicorn.png': '/brands/unicornmobile.png',
+  'pillofon.png': '/brands/pillofon.png',
+  // "pyoin" es un alias interno de catálogo de Refácil para paquetes de iYo Móvil
+  // (nombres de producto "IYO GOLD...", "IYOVOZ..."), no una marca aparte.
+  'pyoin.png': '/brands/iyo.png',
+  // Mismas marcas de arriba, reusadas para sus paquetes.
+  'paquete claro.png': '/brands/claro.svg',
+  'paquete movistar.png': '/brands/movistar.svg',
+  'paquete unicorn.png': '/brands/unicornmobile.png',
+
+  // Pines y Gift Cards
+  'deezer.png': '/brands/deezer.svg',
+  'imvu.png': '/brands/imvu.png',
+  'laOfrenda.png': '/brands/laofrenda.png',
+  'primeVideo.png': '/brands/primevideo.svg',
+  'rixty.png': '/brands/rixty.png',
+  'vix_premium.png': '/brands/vix.svg',
+  'wins.png': '/brands/winsports.svg',
+
+  // Servicios
+  'datacredito.png': '/brands/datacredito.png',
+  'epm.png': '/brands/epm.svg',
+  'essa.png': '/brands/essa.svg',
+  'keo.png': '/brands/keo.png',
+  'sistecredito.png': '/brands/sistecredito.png',
+
+  // Suerte y azar
+  'betplay.png': '/brands/betplay.png',
+  'betsson.png': '/brands/betsson.svg',
+  'bingo.png': '/brands/tiobingo.jpg',
+  'bwin.png': '/brands/bwin.svg',
+  'luckia.png': '/brands/luckia.svg',
+  'rushbet.png': '/brands/rushbet.png',
+  'sportium.png': '/brands/sportium.png',
+  'yajuego.png': '/brands/yajuego.png',
+};
+
+// Construye la URL de la imagen del producto: preferimos nuestro logo local
+// curado, y si no tenemos uno para esa marca caemos al CDN de Refácil (que
+// hoy no resuelve, pero el <img onError> ya cubre ese caso con iniciales).
 function productImageUrl(imageUrl: string): string {
-  return `https://cdn.refacil.com.co/img/${imageUrl}`;
+  const decoded = decodeURIComponent(imageUrl);
+  return BRAND_LOGOS[decoded] ?? `https://cdn.refacil.com.co/img/${imageUrl}`;
 }
 
 
@@ -175,13 +255,15 @@ export function VenderContent() {
   // numero/accountId/phoneNumber ni moveTmpBalance/webhook, estos últimos ya excluidos en el backend).
   // Pines sí necesita el email (no lo tocaron en certificación).
   const RECARGAS_CATEGORY_IDS = new Set(PARENT_GROUPS.find(g => g.id === 'recargas')!.categoryIds);
+  const RECARGAS_BILLETERAS_CATEGORY_IDS = new Set(PARENT_GROUPS.find(g => g.id === 'recargas-billeteras')!.categoryIds);
   const PINES_CATEGORY_IDS = new Set(PARENT_GROUPS.find(g => g.id === 'pines')!.categoryIds);
   const PAQUETES_CATEGORY_IDS = new Set(PARENT_GROUPS.find(g => g.id === 'paquetes')!.categoryIds);
   const isRecargas = !!selectedProduct && RECARGAS_CATEGORY_IDS.has(selectedProduct.categoryId);
+  const isRecargaBilletera = !!selectedProduct && RECARGAS_BILLETERAS_CATEGORY_IDS.has(selectedProduct.categoryId);
   const isPines = !!selectedProduct && PINES_CATEGORY_IDS.has(selectedProduct.categoryId);
   const isPaquetes = !!selectedProduct && PAQUETES_CATEGORY_IDS.has(selectedProduct.categoryId);
-  // Ni Recargas ni Paquetes piden email.
-  const isCellphoneOnly = isRecargas || isPaquetes;
+  // Ni Recargas, Recargas a billeteras ni Paquetes piden email (misma certificación de Refácil).
+  const isCellphoneOnly = isRecargas || isRecargaBilletera || isPaquetes;
 
   // Categorías de "Servicios" (facturas/PIN: DataCrédito, Energía prepago, Refácil Credit):
   // manejan el flujo típico de una pasarela de pago de facturas — primero se consulta la
@@ -207,7 +289,11 @@ export function VenderContent() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const allProducts: any[] = allProductsData?.data || [];
+  // "Pagos Por WhatsApp" (pay-with-whatsapp.svg) queda mal categorizado dentro de Paquetes
+  // (categoryId 196, junto a combos de datos de Tigo). Ese medio de cobro ya vive en Cargar/Cobrar.
+  const allProducts: any[] = (allProductsData?.data || []).filter(
+    (p: any) => p.imageUrl !== 'pay-with-whatsapp.svg'
+  );
 
   // Grupo padre activo
   const activeGroup = PARENT_GROUPS.find(g => g.id === activeGroupId) ?? null;
@@ -222,6 +308,7 @@ export function VenderContent() {
   // Grupos con al menos 1 producto (para no mostrar grupos vacíos)
   const activeGroups = useMemo(() => {
     return PARENT_GROUPS.filter(g => {
+      if (UNCERTIFIED_GROUP_IDS.has(g.id)) return false;
       const ids = new Set(g.categoryIds);
       return allProducts.some(p => ids.has(p.categoryId));
     }).map(g => ({
@@ -518,7 +605,11 @@ export function VenderContent() {
                     src={productImageUrl(selectedProduct.imageUrl)}
                     alt={selectedProduct.name}
                     className="w-12 h-12 object-contain"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    onError={e => {
+                      const el = e.target as HTMLImageElement;
+                      el.style.display = 'none';
+                      el.parentElement!.innerHTML = `<span class="text-lg font-black text-neutral-400">${selectedProduct.name.charAt(0)}</span>`;
+                    }}
                   />
                 </div>
                 <div>
@@ -909,7 +1000,11 @@ export function VenderContent() {
                               src={productImageUrl(p.imageUrl)}
                               alt={p.name}
                               className="w-8 h-8 object-contain"
-                              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              onError={e => {
+                                const el = e.target as HTMLImageElement;
+                                el.style.display = 'none';
+                                el.parentElement!.innerHTML = `<span class="text-sm font-black text-neutral-400">${p.name.charAt(0)}</span>`;
+                              }}
                             />
                           </div>
                           {p.commissionRate && (
