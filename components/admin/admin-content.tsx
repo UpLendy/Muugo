@@ -263,6 +263,27 @@ const RECONCILE_STATUS_STYLE: Record<string, { label: string; className: string;
   critical:    { label: "Crítico",      className: "text-red-600 bg-red-50 border-red-100",             icon: XCircle },
 };
 
+// El backend corre reconcile() cada 30 min y guarda una fila aunque no cambie nada,
+// así que agrupamos las corridas consecutivas con el mismo resultado en una sola fila.
+function groupConsecutiveLogs(logs: any[]) {
+  const groups: { newest: any; oldest: any; count: number }[] = [];
+  for (const log of logs) {
+    const last = groups[groups.length - 1];
+    const sameAsLast = last
+      && last.newest.status === log.status
+      && last.newest.driftCents === log.driftCents
+      && last.newest.totalSellerBalanceCents === log.totalSellerBalanceCents
+      && last.newest.platformPosBalanceCents === log.platformPosBalanceCents;
+    if (sameAsLast) {
+      last.oldest = log;
+      last.count += 1;
+    } else {
+      groups.push({ newest: log, oldest: log, count: 1 });
+    }
+  }
+  return groups;
+}
+
 function ReconciliationPanel() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -289,6 +310,7 @@ function ReconciliationPanel() {
 
   const latest = summaryData?.items?.[0];
   const logs: any[] = historyData?.items || [];
+  const groupedLogs = React.useMemo(() => groupConsecutiveLogs(logs), [logs]);
   const statusInfo = RECONCILE_STATUS_STYLE[latest?.status] || RECONCILE_STATUS_STYLE.ok;
   const StatusIcon = statusInfo.icon;
 
@@ -366,15 +388,23 @@ function ReconciliationPanel() {
           <tbody>
             {historyLoading ? (
               <tr><td colSpan={5} className="p-20 text-center"><Loader2 className="w-6 h-6 animate-spin text-neutral-300 mx-auto" /></td></tr>
-            ) : logs.length === 0 ? (
+            ) : groupedLogs.length === 0 ? (
               <tr><td colSpan={5} className="p-20 text-center text-neutral-300 font-medium italic">Sin historial de reconciliación</td></tr>
             ) : (
-              logs.map((log) => {
+              groupedLogs.map((g) => {
+                const log = g.newest;
                 const st = RECONCILE_STATUS_STYLE[log.status] || RECONCILE_STATUS_STYLE.ok;
                 const Icon = st.icon;
                 return (
                   <tr key={log.id} className="border-b border-neutral-50 hover:bg-neutral-50 transition-colors">
-                    <td className="p-4 text-xs font-mono text-neutral-500 whitespace-nowrap">{new Date(log.createdAt).toLocaleString('es-CO')}</td>
+                    <td className="p-4 text-xs font-mono text-neutral-500 whitespace-nowrap">
+                      {g.count > 1
+                        ? `${new Date(g.oldest.createdAt).toLocaleString('es-CO')} → ${new Date(g.newest.createdAt).toLocaleString('es-CO')}`
+                        : new Date(log.createdAt).toLocaleString('es-CO')}
+                      {g.count > 1 && (
+                        <span className="ml-2 text-[10px] font-black text-neutral-400">×{g.count}</span>
+                      )}
+                    </td>
                     <td className="p-4 text-xs font-bold text-neutral-700">{money(log.totalSellerBalanceCents)}</td>
                     <td className="p-4 text-xs font-bold text-neutral-700">{money(log.platformPosBalanceCents)}</td>
                     <td className={cn("p-4 text-xs font-bold", log.driftCents < 0 ? "text-red-600" : "text-neutral-700")}>
@@ -395,7 +425,7 @@ function ReconciliationPanel() {
 
       <div className="flex items-center justify-between pt-6 mt-4 border-t border-neutral-100">
         <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
-          Página {page} · {logs.length} resultado{logs.length !== 1 ? 's' : ''} {isFetching && '· actualizando…'}
+          Página {page} · {groupedLogs.length} resultado{groupedLogs.length !== 1 ? 's' : ''} ({logs.length} corridas) {isFetching && '· actualizando…'}
         </span>
         <div className="flex items-center gap-2">
           <button
