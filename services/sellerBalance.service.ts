@@ -33,6 +33,11 @@ export const sellerBalanceService = {
     return data;
   },
 
+  getAdminTopups: async (params?: { page?: number; limit?: number; status?: string; email?: string; from?: string; to?: string }) => {
+    const { data } = await apiClient.get('/seller-balance/admin/topups', { params });
+    return data;
+  },
+
   runReconciliation: async () => {
     const { data } = await apiClient.post('/seller-balance/admin/reconcile');
     return data;

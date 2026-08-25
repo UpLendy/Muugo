@@ -3,14 +3,9 @@
 import React, { useState } from "react";
 import {
   Plus,
-  Calendar,
   ChevronDown,
   Search,
   FileText,
-  UserPlus,
-  ArrowDownCircle,
-  Wallet,
-  Filter,
   X,
   Loader2,
   CheckCircle2,
@@ -36,7 +31,7 @@ function cn(...inputs: ClassValue[]) {
 const money = (cents: number) => `$ ${new Intl.NumberFormat('es-CO').format(cents / 100)}`;
 
 const adminTabs = [
-  "Usuarios", "Mis deudas", "Saldo", "Reversa de saldo", "Logs de pagos", "Saldo Refácil"
+  "Usuarios", "Saldo", "Logs de pagos", "Saldo Refácil"
 ];
 
 const WEBHOOK_SOURCES = [
@@ -419,6 +414,196 @@ function ReconciliationPanel() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+const TOPUP_STATUS_META: Record<string, { label: string; className: string; icon: typeof CheckCircle2 }> = {
+  pending:    { label: "Pendiente",  className: "text-amber-600 bg-amber-50 border-amber-100",     icon: Clock },
+  processing: { label: "Procesando", className: "text-cyan-600 bg-cyan-50 border-cyan-100",         icon: RefreshCw },
+  approved:   { label: "Aprobado",   className: "text-emerald-600 bg-emerald-50 border-emerald-100", icon: CheckCircle2 },
+  rejected:   { label: "Rechazado",  className: "text-red-600 bg-red-50 border-red-100",             icon: XCircle },
+  cancelled:  { label: "Cancelado",  className: "text-neutral-500 bg-neutral-100 border-neutral-200", icon: XCircle },
+  expired:    { label: "Expirado",   className: "text-neutral-500 bg-neutral-100 border-neutral-200", icon: Clock },
+  failed:     { label: "Fallido",    className: "text-red-600 bg-red-50 border-red-100",             icon: XCircle },
+};
+
+function SaldoPanel() {
+  const [status, setStatus] = useState("");
+  const [emailInput, setEmailInput] = useState("");
+  const [email, setEmail] = useState("");
+  const [page, setPage] = useState(1);
+  const [selectedTopup, setSelectedTopup] = useState<any | null>(null);
+  const limit = 20;
+
+  const { data, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ["adminTopups", status, email, page],
+    queryFn: () => sellerBalanceService.getAdminTopups({ status: status || undefined, email: email || undefined, page, limit }),
+    placeholderData: (prev: any) => prev,
+  });
+
+  const topups: any[] = data?.items || [];
+  const total: number = data?.total ?? 0;
+
+  const applySearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPage(1);
+    setEmail(emailInput.trim());
+  };
+
+  const sellerLabel = (t: any) => {
+    const user = t.sellerProfile?.user;
+    if (!user) return "—";
+    const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || t.sellerProfile?.displayName;
+    return name ? `${name} · ${user.email}` : user.email;
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <form onSubmit={applySearch} className="bg-neutral-50 p-6 rounded-[2rem] border border-neutral-100 flex flex-wrap items-end gap-4 mb-8">
+        <div className="space-y-1 flex-1 min-w-[220px]">
+          <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1">Buscar por email del vendedor</span>
+          <div className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-2.5">
+            <Search className="w-4 h-4 text-neutral-300 flex-shrink-0" />
+            <input
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+              placeholder="vendedor@correo.com"
+              className="w-full outline-none text-xs font-bold text-neutral-700 placeholder:text-neutral-300 placeholder:font-normal"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1">Estado</span>
+          <div className="relative">
+            <select
+              value={status}
+              onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+              className="appearance-none bg-white border border-neutral-200 rounded-xl pl-4 pr-9 py-2.5 text-xs font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-cyan-100 min-w-[180px]"
+            >
+              <option value="">Todos</option>
+              {Object.entries(TOPUP_STATUS_META).map(([slug, meta]) => (
+                <option key={slug} value={slug}>{meta.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-300 pointer-events-none" />
+          </div>
+        </div>
+
+        <button type="submit" className="bg-[#00d2ff] text-white px-8 py-3 rounded-full font-black uppercase tracking-widest text-xs shadow-lg shadow-cyan-100 hover:scale-105 transition-all">
+          Buscar
+        </button>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="p-3 bg-neutral-100 text-neutral-500 rounded-xl hover:bg-neutral-200 transition-colors"
+          title="Refrescar"
+        >
+          {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+        </button>
+      </form>
+
+      <div className="flex-1 overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="border-b border-neutral-100">
+              {["Fecha", "Vendedor", "Monto", "Método", "Estado", ""].map((head) => (
+                <th key={head} className="p-4 text-left text-xs font-black text-neutral-400 uppercase tracking-widest">{head}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={6} className="p-20 text-center"><Loader2 className="w-6 h-6 animate-spin text-neutral-300 mx-auto" /></td></tr>
+            ) : topups.length === 0 ? (
+              <tr><td colSpan={6} className="p-20 text-center text-neutral-300 font-medium italic">No hay solicitudes de saldo con estos filtros</td></tr>
+            ) : (
+              topups.map((t) => {
+                const st = TOPUP_STATUS_META[t.status] || TOPUP_STATUS_META.pending;
+                const Icon = st.icon;
+                return (
+                  <tr key={t.id} className="border-b border-neutral-50 hover:bg-neutral-50 transition-colors">
+                    <td className="p-4 text-xs font-mono text-neutral-500 whitespace-nowrap">{new Date(t.createdAt).toLocaleString('es-CO')}</td>
+                    <td className="p-4 text-xs font-bold text-neutral-700">{sellerLabel(t)}</td>
+                    <td className="p-4 text-xs font-bold text-neutral-800">{money(Number(t.amountCents))}</td>
+                    <td className="p-4 text-xs text-neutral-500">{t.paymentMethod || "—"}</td>
+                    <td className="p-4">
+                      <span className={cn("inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-full border", st.className)}>
+                        <Icon className="w-3 h-3" /> {st.label}
+                      </span>
+                    </td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() => setSelectedTopup(t)}
+                        className="text-[10px] font-black uppercase tracking-widest text-cyan-600 hover:text-cyan-700"
+                      >
+                        Ver detalle
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-between pt-6 mt-4 border-t border-neutral-100">
+        <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
+          Página {page} · {total} solicitud{total !== 1 ? "es" : ""} en total
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="px-4 py-2 rounded-xl bg-neutral-100 text-neutral-600 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-200 transition-colors"
+          >
+            Anterior
+          </button>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page * limit >= total}
+            className="px-4 py-2 rounded-xl bg-neutral-100 text-neutral-600 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-200 transition-colors"
+          >
+            Siguiente
+          </button>
+        </div>
+      </div>
+
+      {selectedTopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-neutral-100 flex-shrink-0">
+              <div>
+                <h3 className="text-lg font-black text-neutral-900">Solicitud de saldo</h3>
+                <p className="text-xs text-neutral-400 font-mono mt-0.5">{selectedTopup.customerReference || selectedTopup.id}</p>
+              </div>
+              <button onClick={() => setSelectedTopup(null)} className="p-2 hover:bg-neutral-100 rounded-full text-neutral-500">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-4">
+              <div className="flex items-center gap-3 flex-wrap">
+                {(() => {
+                  const st = TOPUP_STATUS_META[selectedTopup.status] || TOPUP_STATUS_META.pending;
+                  const Icon = st.icon;
+                  return (
+                    <span className={cn("inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-full border", st.className)}>
+                      <Icon className="w-3 h-3" /> {st.label}
+                    </span>
+                  );
+                })()}
+                <span className="text-xs text-neutral-400">Vendedor: {sellerLabel(selectedTopup)}</span>
+                <span className="text-xs text-neutral-400">Monto: {money(Number(selectedTopup.amountCents))}</span>
+              </div>
+              <pre className="bg-neutral-900 text-emerald-300 text-xs p-4 rounded-2xl overflow-x-auto font-mono leading-relaxed">
+                {JSON.stringify({ request: selectedTopup.requestPayload, response: selectedTopup.responsePayload, webhook: selectedTopup.webhookPayload }, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -865,143 +1050,10 @@ export function AdminContent() {
         <WebhookLogsPanel />
       ) : activeTab === "Saldo Refácil" ? (
         <ReconciliationPanel />
-      ) : activeTab === "Usuarios" ? (
-        <UsersPanel />
+      ) : activeTab === "Saldo" ? (
+        <SaldoPanel />
       ) : (
-      <>
-      {/* Action Bar / Filters */}
-      <div className="mb-8">
-        {activeTab === "Mis deudas" && (
-          <div className="space-y-8">
-            <div className="bg-neutral-50 p-6 rounded-[2rem] border border-neutral-100 flex items-center gap-6">
-               <div className="flex-1 grid grid-cols-3 gap-4">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1">Fecha inicial</span>
-                    <div className="bg-white border border-neutral-200 rounded-xl px-4 py-2 flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-neutral-300" />
-                      <span className="text-xs text-neutral-400 font-mono italic">dd/mm/aaaa</span>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1">Fecha final</span>
-                    <div className="bg-white border border-neutral-200 rounded-xl px-4 py-2 flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-neutral-300" />
-                      <span className="text-xs text-neutral-400 font-mono italic">dd/mm/aaaa</span>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1">Estado *</span>
-                    <div className="relative">
-                      <select className="w-full appearance-none bg-white border border-neutral-200 rounded-xl px-4 py-2 text-xs text-neutral-400 focus:outline-none">
-                        <option>Selecciona una opción</option>
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-300 pointer-events-none" />
-                    </div>
-                  </div>
-               </div>
-               <button className="bg-[#00d2ff] text-white px-10 py-3 rounded-full font-black uppercase tracking-widest text-xs shadow-lg shadow-cyan-100">
-                  Buscar
-               </button>
-               <div className="w-px h-12 bg-neutral-200" />
-               <div className="flex items-center gap-3">
-                  <div className="p-2 bg-[#eb0028]/10 rounded-xl">
-                    <Wallet className="w-6 h-6 text-[#eb0028]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Pendiente por pagar</span>
-                    <span className="text-xl font-black text-neutral-800">$ 0</span>
-                  </div>
-               </div>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-black text-neutral-800">Últimas transacciones</h3>
-              <div className="flex items-center gap-3">
-                 <button className="p-2.5 bg-[#006b3d] text-white rounded-xl">
-                    <FileText className="w-5 h-5" />
-                 </button>
-                 <button className="p-2.5 bg-neutral-100 text-neutral-500 rounded-xl">
-                    <Search className="w-5 h-5" />
-                 </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "Saldo" && (
-          <div className="flex items-center justify-between">
-            <button className="bg-[#00d2ff] text-white px-8 py-3 rounded-full font-black uppercase tracking-widest text-xs shadow-lg shadow-cyan-100 hover:scale-105 transition-all flex items-center gap-2">
-              Solicitar saldo
-            </button>
-            <div className="flex items-center gap-3">
-               <button className="p-2.5 bg-[#006b3d] text-white rounded-xl">
-                  <FileText className="w-5 h-5" />
-               </button>
-               <button className="p-2.5 bg-neutral-100 text-neutral-500 rounded-xl">
-                  <Search className="w-5 h-5" />
-               </button>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "Reversa de saldo" && (
-          <div className="flex items-center gap-6">
-            <div className="flex-1 grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <span className="text-xs font-black text-neutral-400 uppercase tracking-widest ml-1">Selecciona un rango de fecha</span>
-                <div className="bg-neutral-50 border border-neutral-200 rounded-2xl p-4 flex items-center justify-between cursor-pointer">
-                  <div className="flex items-center gap-3">
-                    <Calendar className="w-5 h-5 text-neutral-400" />
-                    <span className="text-sm font-bold text-neutral-700 font-mono">2026/04/04 - 2026/05/04</span>
-                  </div>
-                  <ChevronDown className="w-5 h-5 text-neutral-300" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <span className="text-xs font-black text-neutral-400 uppercase tracking-widest ml-1">Filtrar por estado *</span>
-                <div className="relative">
-                  <select className="w-full appearance-none bg-white border border-neutral-200 rounded-2xl p-4 text-sm text-neutral-500 focus:outline-none">
-                    <option>Selecciona una opción</option>
-                  </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-300 pointer-events-none" />
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 pt-6">
-              <button className="bg-[#00d2ff] text-white px-8 py-4 rounded-full font-black uppercase tracking-widest text-xs shadow-lg shadow-cyan-100">
-                Filtrar
-              </button>
-              <button className="bg-[#00d2ff] text-white px-8 py-4 rounded-full font-black uppercase tracking-widest text-xs shadow-lg shadow-cyan-100">
-                Limpiar
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Table Section */}
-      <div className="flex-1 overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="border-b border-neutral-100">
-              {activeTab === "Mis deudas" && ["Código", "Fecha", "Hora", "valor", "Pago", "Restante", "Estado", "Observaciones"].map((head) => (
-                <th key={head} className="p-4 text-left text-xs font-black text-neutral-400 uppercase tracking-widest">{head}</th>
-              ))}
-              {activeTab === "Saldo" && ["Estado", "#id", "Fecha y Hora", "Nombre", "Valor", "Observaciones", "Respuesta"].map((head) => (
-                <th key={head} className="p-4 text-left text-xs font-black text-neutral-400 uppercase tracking-widest">{head}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td colSpan={10} className="p-20 text-center text-neutral-300 font-medium italic">
-                No hay datos para mostrar en este momento
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      </>
+        <UsersPanel />
       )}
     </div>
   );
