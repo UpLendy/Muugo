@@ -37,14 +37,4 @@ export const sellerBalanceService = {
     const { data } = await apiClient.get('/seller-balance/admin/topups', { params });
     return data;
   },
-
-  runReconciliation: async () => {
-    const { data } = await apiClient.post('/seller-balance/admin/reconcile');
-    return data;
-  },
-
-  getReconciliationLogs: async (params?: { page?: number; limit?: number }) => {
-    const { data } = await apiClient.get('/seller-balance/admin/reconciliation-logs', { params });
-    return data;
-  },
 };

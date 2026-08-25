@@ -12,8 +12,6 @@ import {
   XCircle,
   Clock,
   RefreshCw,
-  AlertTriangle,
-  Scale,
   Ban
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
@@ -31,7 +29,7 @@ function cn(...inputs: ClassValue[]) {
 const money = (cents: number) => `$ ${new Intl.NumberFormat('es-CO').format(cents / 100)}`;
 
 const adminTabs = [
-  "Usuarios", "Saldo", "Logs de pagos", "Saldo Refácil"
+  "Usuarios", "Saldo", "Logs de pagos"
 ];
 
 const WEBHOOK_SOURCES = [
@@ -252,198 +250,6 @@ function WebhookLogsPanel() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-const RECONCILE_STATUS_STYLE: Record<string, { label: string; className: string; icon: typeof CheckCircle2 }> = {
-  ok:          { label: "OK",           className: "text-emerald-600 bg-emerald-50 border-emerald-100", icon: CheckCircle2 },
-  warning:     { label: "Advertencia",  className: "text-amber-600 bg-amber-50 border-amber-100",       icon: AlertTriangle },
-  low_balance: { label: "Saldo bajo",   className: "text-amber-600 bg-amber-50 border-amber-100",       icon: AlertTriangle },
-  critical:    { label: "Crítico",      className: "text-red-600 bg-red-50 border-red-100",             icon: XCircle },
-};
-
-// El backend corre reconcile() cada 30 min y guarda una fila aunque no cambie nada,
-// así que agrupamos las corridas consecutivas con el mismo resultado en una sola fila.
-function groupConsecutiveLogs(logs: any[]) {
-  const groups: { newest: any; oldest: any; count: number }[] = [];
-  for (const log of logs) {
-    const last = groups[groups.length - 1];
-    const sameAsLast = last
-      && last.newest.status === log.status
-      && last.newest.driftCents === log.driftCents
-      && last.newest.totalSellerBalanceCents === log.totalSellerBalanceCents
-      && last.newest.platformPosBalanceCents === log.platformPosBalanceCents;
-    if (sameAsLast) {
-      last.oldest = log;
-      last.count += 1;
-    } else {
-      groups.push({ newest: log, oldest: log, count: 1 });
-    }
-  }
-  return groups;
-}
-
-function ReconciliationPanel() {
-  const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const limit = 20;
-
-  const { data: summaryData, isLoading: summaryLoading } = useQuery({
-    queryKey: ["reconciliationLatest"],
-    queryFn: () => sellerBalanceService.getReconciliationLogs({ page: 1, limit: 1 }),
-  });
-
-  const { data: historyData, isLoading: historyLoading, isFetching } = useQuery({
-    queryKey: ["reconciliationLogs", page],
-    queryFn: () => sellerBalanceService.getReconciliationLogs({ page, limit }),
-    placeholderData: (prev) => prev,
-  });
-
-  const reconcileMutation = useMutation({
-    mutationFn: () => sellerBalanceService.runReconciliation(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["reconciliationLatest"] });
-      queryClient.invalidateQueries({ queryKey: ["reconciliationLogs"] });
-    },
-  });
-
-  const latest = summaryData?.items?.[0];
-  const logs: any[] = historyData?.items || [];
-  const groupedLogs = React.useMemo(() => groupConsecutiveLogs(logs), [logs]);
-  const statusInfo = RECONCILE_STATUS_STYLE[latest?.status] || RECONCILE_STATUS_STYLE.ok;
-  const StatusIcon = statusInfo.icon;
-
-  return (
-    <div className="flex flex-col h-full">
-      <div className="bg-neutral-50 p-6 rounded-[2rem] border border-neutral-100 mb-8">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <Scale className="w-5 h-5 text-neutral-400" />
-            <h3 className="text-sm font-black text-neutral-700 uppercase tracking-widest">
-              Muugo (wallets) vs. Refácil (cuenta JMURIEL)
-            </h3>
-          </div>
-          <button
-            onClick={() => reconcileMutation.mutate()}
-            disabled={reconcileMutation.isPending}
-            className="flex items-center gap-2 bg-[#00d2ff] text-white px-6 py-2.5 rounded-full font-black uppercase tracking-widest text-xs shadow-lg shadow-cyan-100 hover:scale-105 transition-all disabled:opacity-50 disabled:hover:scale-100"
-          >
-            {reconcileMutation.isPending
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : <RefreshCw className="w-4 h-4" />}
-            Recalcular ahora
-          </button>
-        </div>
-
-        {summaryLoading ? (
-          <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-neutral-300" /></div>
-        ) : !latest ? (
-          <p className="text-sm text-neutral-400 italic">Aún no se ha corrido ninguna reconciliación. Usa "Recalcular ahora".</p>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-              <div className="bg-white rounded-2xl p-4 border border-neutral-100">
-                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Wallets sellers (Dismanet)</span>
-                <p className="text-lg font-black text-neutral-800 mt-1">{money(latest.totalSellerBalanceCents)}</p>
-              </div>
-              <div className="bg-white rounded-2xl p-4 border border-neutral-100">
-                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Cupo Refácil (posBalance)</span>
-                <p className="text-lg font-black text-neutral-800 mt-1">{money(latest.platformPosBalanceCents)}</p>
-              </div>
-              <div className="bg-white rounded-2xl p-4 border border-neutral-100">
-                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Diferencia (drift)</span>
-                <p className={cn("text-lg font-black mt-1", latest.driftCents < 0 ? "text-red-600" : "text-neutral-800")}>
-                  {money(latest.driftCents)} <span className="text-xs font-bold text-neutral-400">({latest.driftPercentage?.toFixed(1)}%)</span>
-                </p>
-              </div>
-              <div className="bg-white rounded-2xl p-4 border border-neutral-100">
-                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Estado</span>
-                <span className={cn("mt-1 inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-full border", statusInfo.className)}>
-                  <StatusIcon className="w-3 h-3" /> {statusInfo.label}
-                </span>
-              </div>
-            </div>
-            {latest.details && (
-              <p className="text-xs text-neutral-400">
-                tmpBalance: {latest.details.tmpBalance != null ? `$ ${new Intl.NumberFormat('es-CO').format(latest.details.tmpBalance)}` : '—'}
-                {" · "}deuda con Refácil: {latest.details.debt != null ? `$ ${new Intl.NumberFormat('es-CO').format(latest.details.debt)}` : '—'}
-                {" · "}última consulta: {new Date(latest.createdAt).toLocaleString('es-CO')}
-                {latest.details.remoteAvailable === false && " · ⚠ usando último valor conocido, Refácil no respondió"}
-              </p>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="flex-1 overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="border-b border-neutral-100">
-              {["Fecha", "Wallets sellers", "Refácil posBalance", "Drift", "Estado"].map((head) => (
-                <th key={head} className="p-4 text-left text-xs font-black text-neutral-400 uppercase tracking-widest">{head}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {historyLoading ? (
-              <tr><td colSpan={5} className="p-20 text-center"><Loader2 className="w-6 h-6 animate-spin text-neutral-300 mx-auto" /></td></tr>
-            ) : groupedLogs.length === 0 ? (
-              <tr><td colSpan={5} className="p-20 text-center text-neutral-300 font-medium italic">Sin historial de reconciliación</td></tr>
-            ) : (
-              groupedLogs.map((g) => {
-                const log = g.newest;
-                const st = RECONCILE_STATUS_STYLE[log.status] || RECONCILE_STATUS_STYLE.ok;
-                const Icon = st.icon;
-                return (
-                  <tr key={log.id} className="border-b border-neutral-50 hover:bg-neutral-50 transition-colors">
-                    <td className="p-4 text-xs font-mono text-neutral-500 whitespace-nowrap">
-                      {g.count > 1
-                        ? `${new Date(g.oldest.createdAt).toLocaleString('es-CO')} → ${new Date(g.newest.createdAt).toLocaleString('es-CO')}`
-                        : new Date(log.createdAt).toLocaleString('es-CO')}
-                      {g.count > 1 && (
-                        <span className="ml-2 text-[10px] font-black text-neutral-400">×{g.count}</span>
-                      )}
-                    </td>
-                    <td className="p-4 text-xs font-bold text-neutral-700">{money(log.totalSellerBalanceCents)}</td>
-                    <td className="p-4 text-xs font-bold text-neutral-700">{money(log.platformPosBalanceCents)}</td>
-                    <td className={cn("p-4 text-xs font-bold", log.driftCents < 0 ? "text-red-600" : "text-neutral-700")}>
-                      {money(log.driftCents)} ({log.driftPercentage?.toFixed(1)}%)
-                    </td>
-                    <td className="p-4">
-                      <span className={cn("inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-full border", st.className)}>
-                        <Icon className="w-3 h-3" /> {st.label}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="flex items-center justify-between pt-6 mt-4 border-t border-neutral-100">
-        <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
-          Página {page} · {groupedLogs.length} resultado{groupedLogs.length !== 1 ? 's' : ''} ({logs.length} corridas) {isFetching && '· actualizando…'}
-        </span>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="px-4 py-2 rounded-xl bg-neutral-100 text-neutral-600 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-200 transition-colors"
-          >
-            Anterior
-          </button>
-          <button
-            onClick={() => setPage(p => p + 1)}
-            disabled={logs.length < limit}
-            className="px-4 py-2 rounded-xl bg-neutral-100 text-neutral-600 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-200 transition-colors"
-          >
-            Siguiente
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1078,8 +884,6 @@ export function AdminContent() {
 
       {activeTab === "Logs de pagos" ? (
         <WebhookLogsPanel />
-      ) : activeTab === "Saldo Refácil" ? (
-        <ReconciliationPanel />
       ) : activeTab === "Saldo" ? (
         <SaldoPanel />
       ) : (
