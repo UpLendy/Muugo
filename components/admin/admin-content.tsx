@@ -18,13 +18,16 @@ import {
   Clock,
   RefreshCw,
   AlertTriangle,
-  Scale
+  Scale,
+  Ban
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { webhookService } from "@/services/webhook.service";
 import { sellerBalanceService } from "@/services/sellerBalance.service";
+import { adminService } from "@/services/admin.service";
+import { useAuthStore } from "@/store/auth-store";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -420,6 +423,411 @@ function ReconciliationPanel() {
   );
 }
 
+const ROLE_META: Record<string, { label: string; className: string }> = {
+  admin: { label: "Admin", className: "text-purple-600 bg-purple-50 border-purple-100" },
+  seller: { label: "Vendedor", className: "text-cyan-600 bg-cyan-50 border-cyan-100" },
+  customer: { label: "Comprador", className: "text-neutral-500 bg-neutral-100 border-neutral-200" },
+};
+const ASSIGNABLE_ROLES = ["admin", "seller", "customer"];
+
+function UserStatusBadge({ user }: { user: any }) {
+  if (user.isBanned) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-red-600 bg-red-50 border border-red-100 px-2 py-1 rounded-full">
+        <Ban className="w-3 h-3" /> Baneado
+      </span>
+    );
+  }
+  if (!user.isActive) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-amber-600 bg-amber-50 border border-amber-100 px-2 py-1 rounded-full">
+        <Clock className="w-3 h-3" /> Suspendido
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-full">
+      <CheckCircle2 className="w-3 h-3" /> Activo
+    </span>
+  );
+}
+
+function UserManageModal({ user, onClose, defaultCommissionRate }: { user: any; onClose: () => void; defaultCommissionRate: number }) {
+  const queryClient = useQueryClient();
+  const currentUser = useAuthStore((state) => state.user);
+  const [reason, setReason] = useState("");
+  const [pendingStatusAction, setPendingStatusAction] = useState<"suspend" | "ban" | null>(null);
+
+  const userRoleSlugs: string[] = (user.userRoles || []).map((ur: any) => ur.role.slug);
+  const isSelf = currentUser?.id === user.id;
+  const isSeller = userRoleSlugs.includes("seller");
+  const customCommissionRate: number | null = user.sellerProfile?.commissionRate ?? null;
+  const [commissionInput, setCommissionInput] = useState(String(customCommissionRate ?? defaultCommissionRate));
+
+  const roleMutation = useMutation({
+    mutationFn: ({ action, roleSlug }: { action: "assign" | "revoke"; roleSlug: string }) =>
+      adminService.updateUserRoles(user.id, action, roleSlug),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["adminUsers"] }),
+  });
+
+  const commissionMutation = useMutation({
+    mutationFn: (rate: number | null) => adminService.updateCommissionRate(user.id, rate),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["adminUsers"] }),
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ action, reason }: { action: "activate" | "suspend" | "ban"; reason?: string }) =>
+      adminService.updateUserStatus(user.id, action, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+      setPendingStatusAction(null);
+      setReason("");
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/40 backdrop-blur-sm">
+      <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+        <div className="flex items-center justify-between p-6 border-b border-neutral-100 flex-shrink-0">
+          <div>
+            <h3 className="text-lg font-black text-neutral-900">{user.firstName} {user.lastName}</h3>
+            <p className="text-xs text-neutral-400 font-mono mt-0.5">{user.email}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-neutral-100 rounded-full text-neutral-500 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto space-y-8">
+          <div>
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Roles</span>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {ASSIGNABLE_ROLES.map((slug) => {
+                const active = userRoleSlugs.includes(slug);
+                const lockedSelfAdmin = slug === "admin" && active && isSelf;
+                const disabled = roleMutation.isPending || lockedSelfAdmin;
+                return (
+                  <button
+                    key={slug}
+                    disabled={disabled}
+                    onClick={() => roleMutation.mutate({ action: active ? "revoke" : "assign", roleSlug: slug })}
+                    title={lockedSelfAdmin ? "No puedes quitarte tu propio rol admin" : undefined}
+                    className={cn(
+                      "text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border transition-all disabled:opacity-40 disabled:cursor-not-allowed",
+                      active ? ROLE_META[slug].className : "text-neutral-400 bg-white border-neutral-200 hover:bg-neutral-50"
+                    )}
+                  >
+                    {active ? "✓ " : "+ "}{ROLE_META[slug].label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {isSeller && (
+            <div>
+              <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Comisión de plataforma</span>
+              <div className="mt-3 flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-white border border-neutral-200 rounded-xl px-3 py-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={commissionInput}
+                    onChange={(e) => setCommissionInput(e.target.value)}
+                    className="w-16 outline-none text-xs font-bold text-neutral-700 text-right"
+                  />
+                  <span className="text-xs font-bold text-neutral-400">%</span>
+                </div>
+                <button
+                  onClick={() => commissionMutation.mutate(Number(commissionInput))}
+                  disabled={commissionMutation.isPending || commissionInput.trim() === ""}
+                  className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-cyan-200 text-cyan-600 bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {commissionMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Guardar"}
+                </button>
+                {customCommissionRate !== null && (
+                  <button
+                    onClick={() => { setCommissionInput(String(defaultCommissionRate)); commissionMutation.mutate(null); }}
+                    disabled={commissionMutation.isPending}
+                    className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest px-3 py-2 hover:text-neutral-600 disabled:opacity-50"
+                  >
+                    Restablecer
+                  </button>
+                )}
+              </div>
+              <p className="mt-2 text-[11px] text-neutral-400">
+                {customCommissionRate !== null
+                  ? "Valor personalizado para este vendedor."
+                  : `Usando el valor por defecto de la plataforma (${defaultCommissionRate}%).`}
+              </p>
+            </div>
+          )}
+
+          <div>
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Estado de la cuenta</span>
+            <div className="mt-3 flex items-center gap-3">
+              <UserStatusBadge user={user} />
+              {isSelf && <span className="text-[10px] text-neutral-400 italic">(tu propia cuenta)</span>}
+            </div>
+
+            {!isSelf && (
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {user.isActive && !user.isBanned && (
+                    <>
+                      <button
+                        onClick={() => setPendingStatusAction("suspend")}
+                        className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-amber-200 text-amber-600 bg-amber-50 hover:bg-amber-100 transition-colors"
+                      >
+                        Suspender
+                      </button>
+                      <button
+                        onClick={() => setPendingStatusAction("ban")}
+                        className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                      >
+                        Banear
+                      </button>
+                    </>
+                  )}
+                  {(!user.isActive || user.isBanned) && (
+                    <button
+                      onClick={() => statusMutation.mutate({ action: "activate" })}
+                      disabled={statusMutation.isPending}
+                      className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-emerald-200 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                    >
+                      {statusMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Reactivar"}
+                    </button>
+                  )}
+                </div>
+
+                {pendingStatusAction && (
+                  <div className="bg-neutral-50 rounded-2xl p-4 border border-neutral-100 space-y-3">
+                    <textarea
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      placeholder={`Motivo (opcional) para ${pendingStatusAction === "suspend" ? "suspender" : "banear"}...`}
+                      className="w-full text-xs text-neutral-700 bg-white border border-neutral-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-cyan-100 resize-none"
+                      rows={2}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => statusMutation.mutate({ action: pendingStatusAction, reason: reason.trim() || undefined })}
+                        disabled={statusMutation.isPending}
+                        className="bg-red-600 text-white px-6 py-2 rounded-full font-black uppercase tracking-widest text-[11px] disabled:opacity-50"
+                      >
+                        {statusMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : `Confirmar ${pendingStatusAction === "suspend" ? "suspensión" : "baneo"}`}
+                      </button>
+                      <button
+                        onClick={() => { setPendingStatusAction(null); setReason(""); }}
+                        className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest px-4 py-2"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {user.bannedReason && (
+            <p className="text-xs text-neutral-400 italic">Motivo registrado: {user.bannedReason}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UsersPanel() {
+  const [emailInput, setEmailInput] = useState("");
+  const [email, setEmail] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const limit = 20;
+
+  let isActive: string | undefined;
+  let isBanned: string | undefined;
+  if (statusFilter === "active") isActive = "true";
+  if (statusFilter === "suspended") { isActive = "false"; isBanned = "false"; }
+  if (statusFilter === "banned") isBanned = "true";
+
+  const { data, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ["adminUsers", email, roleFilter, statusFilter, page],
+    queryFn: () => adminService.getUsers({ email: email || undefined, role: roleFilter || undefined, isActive, isBanned, page, limit }),
+    placeholderData: (prev: any) => prev,
+  });
+
+  const users: any[] = data?.items || [];
+  const total: number = data?.total ?? 0;
+
+  const applySearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPage(1);
+    setEmail(emailInput.trim());
+  };
+
+  // Mantiene el modal sincronizado con la lista tras invalidar la query (ej. después de asignar un rol)
+  const liveSelectedUser = selectedUser ? users.find((u) => u.id === selectedUser.id) || selectedUser : null;
+
+  return (
+    <div className="flex flex-col h-full">
+      <form onSubmit={applySearch} className="bg-neutral-50 p-6 rounded-[2rem] border border-neutral-100 flex flex-wrap items-end gap-4 mb-8">
+        <div className="space-y-1 flex-1 min-w-[220px]">
+          <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1">Buscar por email</span>
+          <div className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-2.5">
+            <Search className="w-4 h-4 text-neutral-300 flex-shrink-0" />
+            <input
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+              placeholder="cliente@correo.com"
+              className="w-full outline-none text-xs font-bold text-neutral-700 placeholder:text-neutral-300 placeholder:font-normal"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1">Rol</span>
+          <div className="relative">
+            <select
+              value={roleFilter}
+              onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
+              className="appearance-none bg-white border border-neutral-200 rounded-xl pl-4 pr-9 py-2.5 text-xs font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-cyan-100 min-w-[160px]"
+            >
+              <option value="">Todos los roles</option>
+              {ASSIGNABLE_ROLES.map((slug) => (
+                <option key={slug} value={slug}>{ROLE_META[slug].label}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-300 pointer-events-none" />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1">Estado</span>
+          <div className="relative">
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+              className="appearance-none bg-white border border-neutral-200 rounded-xl pl-4 pr-9 py-2.5 text-xs font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-cyan-100 min-w-[160px]"
+            >
+              <option value="">Todos</option>
+              <option value="active">Activos</option>
+              <option value="suspended">Suspendidos</option>
+              <option value="banned">Baneados</option>
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-300 pointer-events-none" />
+          </div>
+        </div>
+
+        <button type="submit" className="bg-[#00d2ff] text-white px-8 py-3 rounded-full font-black uppercase tracking-widest text-xs shadow-lg shadow-cyan-100 hover:scale-105 transition-all">
+          Buscar
+        </button>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="p-3 bg-neutral-100 text-neutral-500 rounded-xl hover:bg-neutral-200 transition-colors"
+          title="Refrescar"
+        >
+          {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+        </button>
+      </form>
+
+      <div className="flex-1 overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="border-b border-neutral-100">
+              {["Usuario", "Teléfono", "Roles", "Estado", "Registrado", ""].map((head) => (
+                <th key={head} className="p-4 text-left text-xs font-black text-neutral-400 uppercase tracking-widest">{head}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={6} className="p-20 text-center"><Loader2 className="w-6 h-6 animate-spin text-neutral-300 mx-auto" /></td></tr>
+            ) : users.length === 0 ? (
+              <tr><td colSpan={6} className="p-20 text-center text-neutral-300 font-medium italic">No hay usuarios con estos filtros</td></tr>
+            ) : (
+              users.map((u) => (
+                <tr key={u.id} className="border-b border-neutral-50 hover:bg-neutral-50 transition-colors">
+                  <td className="p-4">
+                    <p className="text-xs font-bold text-neutral-800">{u.firstName} {u.lastName}</p>
+                    <p className="text-xs text-neutral-400 font-mono">{u.email}</p>
+                  </td>
+                  <td className="p-4 text-xs font-mono text-neutral-500">{u.phoneNumber || "—"}</td>
+                  <td className="p-4">
+                    <div className="flex flex-wrap gap-1">
+                      {(u.userRoles || []).length === 0 ? (
+                        <span className="text-xs text-neutral-300 italic">Sin roles</span>
+                      ) : (
+                        u.userRoles.map((ur: any) => (
+                          <span
+                            key={ur.role.slug}
+                            className={cn(
+                              "text-[10px] font-black uppercase px-2 py-1 rounded-full border",
+                              ROLE_META[ur.role.slug]?.className || "text-neutral-500 bg-neutral-100 border-neutral-200"
+                            )}
+                          >
+                            {ROLE_META[ur.role.slug]?.label || ur.role.slug}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </td>
+                  <td className="p-4"><UserStatusBadge user={u} /></td>
+                  <td className="p-4 text-xs font-mono text-neutral-500 whitespace-nowrap">{new Date(u.createdAt).toLocaleDateString("es-CO")}</td>
+                  <td className="p-4 text-right">
+                    <button
+                      onClick={() => setSelectedUser(u)}
+                      className="text-[10px] font-black uppercase tracking-widest text-cyan-600 hover:text-cyan-700"
+                    >
+                      Gestionar
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-between pt-6 mt-4 border-t border-neutral-100">
+        <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
+          Página {page} · {total} usuario{total !== 1 ? "s" : ""} en total
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="px-4 py-2 rounded-xl bg-neutral-100 text-neutral-600 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-200 transition-colors"
+          >
+            Anterior
+          </button>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page * limit >= total}
+            className="px-4 py-2 rounded-xl bg-neutral-100 text-neutral-600 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-200 transition-colors"
+          >
+            Siguiente
+          </button>
+        </div>
+      </div>
+
+      {liveSelectedUser && (
+        <UserManageModal
+          user={liveSelectedUser}
+          onClose={() => setSelectedUser(null)}
+          defaultCommissionRate={data?.defaultCommissionRate ?? 5}
+        />
+      )}
+    </div>
+  );
+}
+
 export function AdminContent() {
   const [activeTab, setActiveTab] = useState("Usuarios");
 
@@ -457,26 +865,12 @@ export function AdminContent() {
         <WebhookLogsPanel />
       ) : activeTab === "Saldo Refácil" ? (
         <ReconciliationPanel />
+      ) : activeTab === "Usuarios" ? (
+        <UsersPanel />
       ) : (
       <>
       {/* Action Bar / Filters */}
       <div className="mb-8">
-        {activeTab === "Usuarios" && (
-          <div className="flex items-center justify-between">
-            <button className="bg-[#00d2ff] text-white px-8 py-3 rounded-full font-black uppercase tracking-widest text-xs shadow-lg shadow-cyan-100 hover:scale-105 transition-all flex items-center gap-2">
-              Crear usuario
-            </button>
-            <div className="flex items-center gap-3">
-               <button className="p-2.5 bg-[#006b3d] text-white rounded-xl hover:opacity-90 transition-opacity">
-                  <FileText className="w-5 h-5" />
-               </button>
-               <button className="p-2.5 bg-neutral-100 text-neutral-500 rounded-xl hover:bg-neutral-200 transition-colors">
-                  <Search className="w-5 h-5" />
-               </button>
-            </div>
-          </div>
-        )}
-
         {activeTab === "Mis deudas" && (
           <div className="space-y-8">
             <div className="bg-neutral-50 p-6 rounded-[2rem] border border-neutral-100 flex items-center gap-6">
@@ -590,9 +984,6 @@ export function AdminContent() {
         <table className="w-full border-collapse">
           <thead>
             <tr className="border-b border-neutral-100">
-              {activeTab === "Usuarios" && ["Código", "Nombre completo", "Usuario", "Estado"].map((head) => (
-                <th key={head} className="p-4 text-left text-xs font-black text-neutral-400 uppercase tracking-widest">{head}</th>
-              ))}
               {activeTab === "Mis deudas" && ["Código", "Fecha", "Hora", "valor", "Pago", "Restante", "Estado", "Observaciones"].map((head) => (
                 <th key={head} className="p-4 text-left text-xs font-black text-neutral-400 uppercase tracking-widest">{head}</th>
               ))}
