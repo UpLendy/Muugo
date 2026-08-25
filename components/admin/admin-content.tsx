@@ -287,8 +287,8 @@ function ReconciliationPanel() {
     },
   });
 
-  const latest = summaryData?.data?.items?.[0];
-  const logs: any[] = historyData?.data?.items || [];
+  const latest = summaryData?.items?.[0];
+  const logs: any[] = historyData?.items || [];
   const statusInfo = RECONCILE_STATUS_STYLE[latest?.status] || RECONCILE_STATUS_STYLE.ok;
   const StatusIcon = statusInfo.icon;
 
