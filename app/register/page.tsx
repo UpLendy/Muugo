@@ -24,7 +24,10 @@ export default function RegisterPage() {
   const router = useRouter();
 
   const mutation = useMutation({
-    mutationFn: () => authService.register(formData),
+    mutationFn: () => {
+      const { phoneNumber, ...rest } = formData;
+      return authService.register(phoneNumber.trim() ? formData : rest);
+    },
     onSuccess: async (data) => {
       login(data.user, data.token);
       try {
