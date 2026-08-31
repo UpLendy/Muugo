@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
+import { authService } from "@/services/auth.service";
 
 const adminPaths = ['/admin'];
 
@@ -10,9 +11,19 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
   const user = useAuthStore((state) => state.user);
+  const updateUser = useAuthStore((state) => state.updateUser);
   const router = useRouter();
   const pathname = usePathname();
   const isAdmin = !!user?.roles?.includes('admin');
+
+  useEffect(() => {
+    // El usuario persistido en localStorage puede quedar desactualizado (ej. roles
+    // o tienda asignados después del último login). Al hidratar una sesión ya
+    // autenticada, refrescamos contra /auth/me para que datos como "roles" reflejen
+    // el estado real sin necesidad de cerrar y volver a iniciar sesión.
+    if (!hasHydrated || !isAuthenticated) return;
+    authService.getMe().then(updateUser).catch(() => {});
+  }, [hasHydrated, isAuthenticated, updateUser]);
 
   useEffect(() => {
     // Esperamos a que Zustand termine de rehidratar desde localStorage antes de
