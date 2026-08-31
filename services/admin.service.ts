@@ -29,4 +29,12 @@ export const adminService = {
     const { data } = await apiClient.patch(`/admin/catalog-products/${productId}/platform-fee-rate`, { platformFeeRateOverride });
     return data;
   },
+  async getUserProductCommissions(userId: string) {
+    const { data } = await apiClient.get(`/admin/users/${userId}/product-commissions`);
+    return data;
+  },
+  async updateUserProductCommissionRate(userId: string, productId: number, commissionRate: number | null) {
+    const { data } = await apiClient.patch(`/admin/users/${userId}/products/${productId}/commission-rate`, { commissionRate });
+    return data;
+  },
 };

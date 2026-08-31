@@ -648,6 +648,107 @@ function UserStatusBadge({ user }: { user: any }) {
   );
 }
 
+function SellerProductCommissionsSection({ userId, defaultCommissionRate }: { userId: string; defaultCommissionRate: number }) {
+  const queryClient = useQueryClient();
+  const [productSearch, setProductSearch] = useState("");
+  const [rateInputs, setRateInputs] = useState<Record<number, string>>({});
+
+  const overridesQuery = useQuery({
+    queryKey: ["sellerProductCommissions", userId],
+    queryFn: () => adminService.getUserProductCommissions(userId),
+  });
+
+  const searchQuery = useQuery({
+    queryKey: ["adminCatalogProductSearch", productSearch],
+    queryFn: () => adminService.getCatalogProducts({ name: productSearch, limit: 10 }),
+    enabled: productSearch.trim().length >= 2,
+  });
+
+  const mutation = useMutation({
+    mutationFn: ({ productId, commissionRate }: { productId: number; commissionRate: number | null }) =>
+      adminService.updateUserProductCommissionRate(userId, productId, commissionRate),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sellerProductCommissions", userId] }),
+  });
+
+  const overrides: any[] = overridesQuery.data?.items ?? [];
+  const overriddenProductIds = new Set(overrides.map((o) => o.productId));
+  const searchResults: any[] = (searchQuery.data?.items ?? []).filter((p: any) => !overriddenProductIds.has(p.id));
+
+  return (
+    <div>
+      <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Comisión por producto (este vendedor)</span>
+
+      {overrides.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {overrides.map((o) => (
+            <div key={o.productId} className="flex items-center justify-between gap-2 bg-neutral-50 border border-neutral-100 rounded-xl px-3 py-2">
+              <span className="text-xs font-bold text-neutral-700 truncate">{o.product?.name ?? `Producto #${o.productId}`}</span>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-xs font-black text-cyan-600">{o.commissionRate}%</span>
+                <button
+                  onClick={() => mutation.mutate({ productId: o.productId, commissionRate: null })}
+                  disabled={mutation.isPending}
+                  className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest hover:text-red-500 disabled:opacity-50"
+                >
+                  Quitar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-3">
+        <input
+          type="text"
+          value={productSearch}
+          onChange={(e) => setProductSearch(e.target.value)}
+          placeholder="Buscar producto por nombre..."
+          className="w-full text-xs text-neutral-700 bg-white border border-neutral-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-100"
+        />
+        {productSearch.trim().length >= 2 && (
+          <div className="mt-2 space-y-2">
+            {searchQuery.isLoading && <p className="text-[11px] text-neutral-400">Buscando...</p>}
+            {searchResults.map((p: any) => {
+              const inputValue = rateInputs[p.id] ?? "";
+              return (
+                <div key={p.id} className="flex items-center justify-between gap-2 border border-neutral-100 rounded-xl px-3 py-2">
+                  <span className="text-xs font-bold text-neutral-700 truncate">{p.name}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      value={inputValue}
+                      onChange={(e) => setRateInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                      placeholder="%"
+                      className="w-14 outline-none text-xs font-bold text-neutral-700 text-right border border-neutral-200 rounded-lg px-2 py-1"
+                    />
+                    <button
+                      onClick={() => mutation.mutate({ productId: p.id, commissionRate: Number(inputValue) })}
+                      disabled={mutation.isPending || inputValue.trim() === ""}
+                      className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border border-cyan-200 text-cyan-600 bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {mutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Asignar"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {!searchQuery.isLoading && searchResults.length === 0 && (
+              <p className="text-[11px] text-neutral-400">Sin resultados.</p>
+            )}
+          </div>
+        )}
+      </div>
+      <p className="mt-2 text-[11px] text-neutral-400">
+        Tiene prioridad sobre la comisión general del vendedor y sobre la del producto.
+      </p>
+    </div>
+  );
+}
+
 function UserManageModal({ user, onClose, defaultCommissionRate }: { user: any; onClose: () => void; defaultCommissionRate: number }) {
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((state) => state.user);
@@ -758,6 +859,12 @@ function UserManageModal({ user, onClose, defaultCommissionRate }: { user: any; 
                   ? "Valor personalizado para este vendedor."
                   : `Usando el valor por defecto de la plataforma (${defaultCommissionRate}%).`}
               </p>
+            </div>
+          )}
+
+          {isSeller && (
+            <div>
+              <SellerProductCommissionsSection userId={user.id} defaultCommissionRate={defaultCommissionRate} />
             </div>
           )}
 
