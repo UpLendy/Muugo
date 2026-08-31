@@ -17,7 +17,8 @@ import {
   Box,
   X,
   Zap,
-  Check
+  Check,
+  CheckCircle2
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -228,7 +229,8 @@ export function VenderContent() {
   const queryClient = useQueryClient();
 
   // -- ESTADOS --
-  const [view, setView] = useState<'categories' | 'checkout'>('categories');
+  const [view, setView] = useState<'categories' | 'checkout' | 'success'>('categories');
+  const [lastSale, setLastSale] = useState<{ product: any; sell: any } | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   // Paso dentro del modal: 'brands' | 'products'
   const [modalStep, setModalStep] = useState<'brands' | 'products'>('brands');
@@ -413,12 +415,14 @@ export function VenderContent() {
       queryClient.invalidateQueries({ queryKey: ['sellerBalance'] });
       if (sell?.status === 'failed') {
         alert(`La venta no se pudo completar: ${sell?.errorMessage || 'Refácil rechazó la transacción'}`);
+        setView('categories');
       } else if (sell?.status === 'completed') {
-        alert("¡Venta procesada exitosamente!");
+        setLastSale({ product: selectedProduct, sell });
+        setView('success');
       } else {
         alert("Venta enviada, está en proceso de confirmación. Revisa el estado en tu historial de ventas.");
+        setView('categories');
       }
-      setView('categories');
       setPhone("");
       setEmail("");
       setDocument("");
@@ -583,7 +587,7 @@ export function VenderContent() {
               </div>
             )}
           </>
-        ) : (
+        ) : view === 'checkout' ? (
           /* VISTA 2: CHECKOUT */
           <div className="flex flex-col h-full pb-20">
             <div className="flex items-center mb-6">
@@ -843,6 +847,49 @@ export function VenderContent() {
                 </>
               )}
             </div>
+          </div>
+        ) : (
+          /* VISTA 3: CONFIRMACIÓN DE COMPRA */
+          <div className="flex flex-col items-center justify-center h-full text-center px-6">
+            <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mb-4">
+              <CheckCircle2 className="w-9 h-9 text-emerald-500" />
+            </div>
+            <h2 className="text-2xl font-black text-neutral-800 mb-1">¡Venta exitosa!</h2>
+            <p className="text-neutral-400 text-sm mb-8">La transacción fue procesada correctamente</p>
+
+            {lastSale?.product && (
+              <div className="w-full max-w-sm bg-neutral-50 border border-neutral-100 rounded-[2rem] p-6 flex items-center gap-4 mb-6">
+                <img
+                  src={productImageUrl(lastSale.product.imageUrl)}
+                  alt={lastSale.product.name}
+                  className="w-14 h-14 object-contain rounded-xl bg-white border border-neutral-100 p-1"
+                />
+                <div className="flex-1 text-left">
+                  <p className="font-black text-neutral-800 leading-tight">{lastSale.product.name}</p>
+                  <p className="text-[#00c9cc] font-bold text-sm mt-0.5">
+                    ${(((lastSale.sell?.amountCents ?? lastSale.product.amount) || 0) / 100).toLocaleString('es-CO')} COP
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {lastSale?.sell?.deliveryData && (
+              <div className="w-full max-w-sm bg-white border border-neutral-100 rounded-2xl p-4 text-left mb-8 space-y-1">
+                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Detalles de la entrega</span>
+                {Object.entries(lastSale.sell.deliveryData as Record<string, any>)
+                  .filter(([, v]) => v !== null && v !== undefined && typeof v !== 'object')
+                  .map(([k, v]) => (
+                    <p key={k} className="text-xs text-neutral-600"><span className="font-bold">{k}:</span> {String(v)}</p>
+                  ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => { setView('categories'); setLastSale(null); }}
+              className="w-full max-w-sm bg-[#00d2ff] text-white font-black uppercase tracking-widest text-xs py-4 rounded-full shadow-lg shadow-cyan-100 hover:scale-105 transition-all"
+            >
+              Hacer otra venta
+            </button>
           </div>
         )}
       </div>

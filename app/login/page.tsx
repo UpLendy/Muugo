@@ -51,12 +51,12 @@ export default function LoginPage() {
                   "radial-gradient(circle, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.55) 40%, transparent 72%)",
               }}
             />
-            <div className="relative h-14 w-48">
+            <div className="relative h-24 w-80">
               <Image
                 src="/logo-muugo-dark.jpeg"
                 alt="Muugo"
                 fill
-                sizes="192px"
+                sizes="320px"
                 className="object-contain rounded-xl"
                 priority
               />
@@ -80,12 +80,12 @@ export default function LoginPage() {
           
           {/* Logo solo en móvil */}
           <div className="lg:hidden mb-8 flex justify-center">
-            <div className="relative h-12 w-40">
+            <div className="relative h-20 w-64">
               <Image
                 src="/logo-muugo.png"
                 alt="Muugo"
                 fill
-                sizes="160px"
+                sizes="256px"
                 className="object-contain rounded-lg"
                 priority
               />
