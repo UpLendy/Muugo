@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import {
   Plus,
   ChevronDown,
@@ -648,297 +649,425 @@ function UserStatusBadge({ user }: { user: any }) {
   );
 }
 
-function SellerProductCommissionsSection({ userId, defaultCommissionRate }: { userId: string; defaultCommissionRate: number }) {
+function SellerProductCommissionRow({
+  userId, product, override, sellerCommissionRate, defaultCommissionRate, onSaved,
+}: {
+  userId: string;
+  product: any;
+  override: number | null;
+  sellerCommissionRate: number | null;
+  defaultCommissionRate: number;
+  onSaved: () => void;
+}) {
+  const [input, setInput] = useState(String(override ?? ""));
+
+  const mutation = useMutation({
+    mutationFn: (rate: number | null) => adminService.updateUserProductCommissionRate(userId, product.id, rate),
+    onSuccess: onSaved,
+  });
+
+  const fallbackRate = product.platformFeeRateOverride ?? sellerCommissionRate ?? defaultCommissionRate;
+  const fallbackLabel = product.platformFeeRateOverride !== null && product.platformFeeRateOverride !== undefined
+    ? `Producto: ${product.platformFeeRateOverride}%`
+    : sellerCommissionRate !== null
+    ? `Vendedor: ${sellerCommissionRate}%`
+    : `Plataforma: ${defaultCommissionRate}%`;
+
+  return (
+    <tr className="border-b border-neutral-50 hover:bg-neutral-50 transition-colors">
+      <td className="p-4">
+        <div className="flex items-center gap-3">
+          {product.imageUrl && (
+            <img src={product.imageUrl} alt={product.name} className="w-8 h-8 object-contain rounded-lg bg-white border border-neutral-100 p-0.5" />
+          )}
+          <span className="text-xs font-bold text-neutral-700">{product.name}</span>
+        </div>
+      </td>
+      <td className="p-4 text-xs text-neutral-400">{product.productType}</td>
+      <td className="p-4">
+        <span className={cn(
+          "text-[10px] font-black uppercase px-2 py-1 rounded-full border",
+          override !== null ? "text-cyan-600 bg-cyan-50 border-cyan-100" : "text-neutral-400 bg-neutral-100 border-neutral-200"
+        )}>
+          {override !== null ? `Este vendedor: ${override}%` : `Sin override · ${fallbackLabel}`}
+        </span>
+      </td>
+      <td className="p-4">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-white border border-neutral-200 rounded-xl px-3 py-2">
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.1}
+              value={input}
+              placeholder={String(fallbackRate)}
+              onChange={(e) => setInput(e.target.value)}
+              className="w-16 outline-none text-xs font-bold text-neutral-700 text-right"
+            />
+            <span className="text-xs font-bold text-neutral-400">%</span>
+          </div>
+          <button
+            onClick={() => mutation.mutate(input.trim() === "" ? null : Number(input))}
+            disabled={mutation.isPending}
+            className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-cyan-200 text-cyan-600 bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {mutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Guardar"}
+          </button>
+          {override !== null && (
+            <button
+              onClick={() => { setInput(""); mutation.mutate(null); }}
+              disabled={mutation.isPending}
+              className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest px-2 py-2 hover:text-neutral-600 disabled:opacity-50"
+            >
+              Quitar
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function SellerProductCommissionsTable({ userId, sellerCommissionRate, defaultCommissionRate }: { userId: string; sellerCommissionRate: number | null; defaultCommissionRate: number }) {
+  const [nameInput, setNameInput] = useState("");
+  const [name, setName] = useState("");
+  const [page, setPage] = useState(1);
+  const limit = 20;
   const queryClient = useQueryClient();
-  const [productSearch, setProductSearch] = useState("");
-  const [rateInputs, setRateInputs] = useState<Record<number, string>>({});
+
+  const productsQuery = useQuery({
+    queryKey: ["adminCatalogProducts", name, page],
+    queryFn: () => adminService.getCatalogProducts({ name: name || undefined, page, limit }),
+    placeholderData: (prev: any) => prev,
+  });
 
   const overridesQuery = useQuery({
     queryKey: ["sellerProductCommissions", userId],
     queryFn: () => adminService.getUserProductCommissions(userId),
   });
 
-  const searchQuery = useQuery({
-    queryKey: ["adminCatalogProductSearch", productSearch],
-    queryFn: () => adminService.getCatalogProducts({ name: productSearch, limit: 10 }),
-    enabled: productSearch.trim().length >= 2,
-  });
+  const products: any[] = productsQuery.data?.items || [];
+  const total: number = productsQuery.data?.total ?? 0;
+  const overridesByProductId = new Map<number, number>(
+    (overridesQuery.data?.items ?? []).map((o: any) => [o.productId, o.commissionRate])
+  );
 
-  const mutation = useMutation({
-    mutationFn: ({ productId, commissionRate }: { productId: number; commissionRate: number | null }) =>
-      adminService.updateUserProductCommissionRate(userId, productId, commissionRate),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sellerProductCommissions", userId] }),
-  });
+  const applySearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPage(1);
+    setName(nameInput.trim());
+  };
 
-  const overrides: any[] = overridesQuery.data?.items ?? [];
-  const overriddenProductIds = new Set(overrides.map((o) => o.productId));
-  const searchResults: any[] = (searchQuery.data?.items ?? []).filter((p: any) => !overriddenProductIds.has(p.id));
+  const onSaved = () => {
+    queryClient.invalidateQueries({ queryKey: ["adminCatalogProducts"] });
+    queryClient.invalidateQueries({ queryKey: ["sellerProductCommissions", userId] });
+  };
 
   return (
     <div>
       <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Comisión por producto (este vendedor)</span>
-
-      {overrides.length > 0 && (
-        <div className="mt-3 space-y-2">
-          {overrides.map((o) => (
-            <div key={o.productId} className="flex items-center justify-between gap-2 bg-neutral-50 border border-neutral-100 rounded-xl px-3 py-2">
-              <span className="text-xs font-bold text-neutral-700 truncate">{o.product?.name ?? `Producto #${o.productId}`}</span>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-xs font-black text-cyan-600">{o.commissionRate}%</span>
-                <button
-                  onClick={() => mutation.mutate({ productId: o.productId, commissionRate: null })}
-                  disabled={mutation.isPending}
-                  className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest hover:text-red-500 disabled:opacity-50"
-                >
-                  Quitar
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="mt-3">
-        <input
-          type="text"
-          value={productSearch}
-          onChange={(e) => setProductSearch(e.target.value)}
-          placeholder="Buscar producto por nombre..."
-          className="w-full text-xs text-neutral-700 bg-white border border-neutral-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-100"
-        />
-        {productSearch.trim().length >= 2 && (
-          <div className="mt-2 space-y-2">
-            {searchQuery.isLoading && <p className="text-[11px] text-neutral-400">Buscando...</p>}
-            {searchResults.map((p: any) => {
-              const inputValue = rateInputs[p.id] ?? "";
-              return (
-                <div key={p.id} className="flex items-center justify-between gap-2 border border-neutral-100 rounded-xl px-3 py-2">
-                  <span className="text-xs font-bold text-neutral-700 truncate">{p.name}</span>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.1}
-                      value={inputValue}
-                      onChange={(e) => setRateInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                      placeholder="%"
-                      className="w-14 outline-none text-xs font-bold text-neutral-700 text-right border border-neutral-200 rounded-lg px-2 py-1"
-                    />
-                    <button
-                      onClick={() => mutation.mutate({ productId: p.id, commissionRate: Number(inputValue) })}
-                      disabled={mutation.isPending || inputValue.trim() === ""}
-                      className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border border-cyan-200 text-cyan-600 bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {mutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Asignar"}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-            {!searchQuery.isLoading && searchResults.length === 0 && (
-              <p className="text-[11px] text-neutral-400">Sin resultados.</p>
-            )}
-          </div>
-        )}
-      </div>
-      <p className="mt-2 text-[11px] text-neutral-400">
-        Tiene prioridad sobre la comisión general del vendedor y sobre la del producto.
+      <p className="mt-2 mb-4 text-[11px] text-neutral-400">
+        Selecciona cualquier producto del catálogo y asígnale una comisión específica para este vendedor. Tiene prioridad sobre la comisión del producto y la general del vendedor.
       </p>
+
+      <form onSubmit={applySearch} className="bg-neutral-50 p-4 rounded-2xl border border-neutral-100 flex flex-wrap items-end gap-3 mb-4">
+        <div className="space-y-1 flex-1 min-w-[200px]">
+          <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1">Filtrar por nombre (opcional)</span>
+          <div className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-2.5">
+            <Search className="w-4 h-4 text-neutral-300 flex-shrink-0" />
+            <input
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              placeholder="Netflix, Disney+..."
+              className="w-full outline-none text-xs font-bold text-neutral-700 placeholder:text-neutral-300 placeholder:font-normal"
+            />
+          </div>
+        </div>
+        <button type="submit" className="bg-[#00d2ff] text-white px-6 py-2.5 rounded-full font-black uppercase tracking-widest text-xs shadow-lg shadow-cyan-100 hover:scale-105 transition-all">
+          Filtrar
+        </button>
+      </form>
+
+      <div className="overflow-x-auto border border-neutral-100 rounded-2xl">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="border-b border-neutral-100">
+              {["Producto", "Tipo", "Comisión efectiva", "Ajustar % para este vendedor"].map((head) => (
+                <th key={head} className="p-4 text-left text-xs font-black text-neutral-400 uppercase tracking-widest">{head}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {productsQuery.isLoading ? (
+              <tr><td colSpan={4} className="p-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-neutral-300 mx-auto" /></td></tr>
+            ) : products.length === 0 ? (
+              <tr><td colSpan={4} className="p-16 text-center text-neutral-300 font-medium italic">No hay productos con este filtro</td></tr>
+            ) : (
+              products.map((p) => (
+                <SellerProductCommissionRow
+                  key={p.id}
+                  userId={userId}
+                  product={p}
+                  override={overridesByProductId.has(p.id) ? overridesByProductId.get(p.id)! : null}
+                  sellerCommissionRate={sellerCommissionRate}
+                  defaultCommissionRate={defaultCommissionRate}
+                  onSaved={onSaved}
+                />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-between pt-4 mt-2">
+        <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
+          Página {page} · {total} producto{total !== 1 ? "s" : ""} en total
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="px-4 py-2 rounded-xl bg-neutral-100 text-neutral-600 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-200 transition-colors"
+          >
+            Anterior
+          </button>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page * limit >= total}
+            className="px-4 py-2 rounded-xl bg-neutral-100 text-neutral-600 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-200 transition-colors"
+          >
+            Siguiente
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
-function UserManageModal({ user, onClose, defaultCommissionRate }: { user: any; onClose: () => void; defaultCommissionRate: number }) {
+export function UserManageView({ userId }: { userId: string }) {
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((state) => state.user);
   const [reason, setReason] = useState("");
   const [pendingStatusAction, setPendingStatusAction] = useState<"suspend" | "ban" | null>(null);
 
-  const userRoleSlugs: string[] = (user.userRoles || []).map((ur: any) => ur.role.slug);
-  const isSelf = currentUser?.id === user.id;
+  const { data, isLoading } = useQuery({
+    queryKey: ["adminUser", userId],
+    queryFn: () => adminService.getUser(userId),
+  });
+
+  const user = data?.user;
+  const defaultCommissionRate: number = data?.defaultCommissionRate ?? 5;
+
+  const userRoleSlugs: string[] = (user?.userRoles || []).map((ur: any) => ur.role.slug);
+  const isSelf = currentUser?.id === user?.id;
   const isSeller = userRoleSlugs.includes("seller");
-  const customCommissionRate: number | null = user.sellerProfile?.commissionRate ?? null;
-  const [commissionInput, setCommissionInput] = useState(String(customCommissionRate ?? defaultCommissionRate));
+  const customCommissionRate: number | null = user?.sellerProfile?.commissionRate ?? null;
+  const [commissionInput, setCommissionInput] = useState<string | null>(null);
+  const effectiveCommissionInput = commissionInput ?? String(customCommissionRate ?? defaultCommissionRate);
+
+  const invalidateUser = () => {
+    queryClient.invalidateQueries({ queryKey: ["adminUser", userId] });
+    queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+  };
 
   const roleMutation = useMutation({
     mutationFn: ({ action, roleSlug }: { action: "assign" | "revoke"; roleSlug: string }) =>
-      adminService.updateUserRoles(user.id, action, roleSlug),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["adminUsers"] }),
+      adminService.updateUserRoles(userId, action, roleSlug),
+    onSuccess: invalidateUser,
   });
 
   const commissionMutation = useMutation({
-    mutationFn: (rate: number | null) => adminService.updateCommissionRate(user.id, rate),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["adminUsers"] }),
+    mutationFn: (rate: number | null) => adminService.updateCommissionRate(userId, rate),
+    onSuccess: invalidateUser,
   });
 
   const statusMutation = useMutation({
     mutationFn: ({ action, reason }: { action: "activate" | "suspend" | "ban"; reason?: string }) =>
-      adminService.updateUserStatus(user.id, action, reason),
+      adminService.updateUserStatus(userId, action, reason),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+      invalidateUser();
       setPendingStatusAction(null);
       setReason("");
     },
   });
 
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-20">
+        <Loader2 className="w-8 h-8 animate-spin text-neutral-300" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-20 gap-4">
+        <p className="text-neutral-400 font-medium italic">Usuario no encontrado.</p>
+        <Link href="/admin" className="text-xs font-black uppercase tracking-widest text-cyan-600 hover:text-cyan-700">
+          Volver a administración
+        </Link>
+      </div>
+    );
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/40 backdrop-blur-sm">
-      <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
-        <div className="flex items-center justify-between p-6 border-b border-neutral-100 flex-shrink-0">
-          <div>
-            <h3 className="text-lg font-black text-neutral-900">{user.firstName} {user.lastName}</h3>
-            <p className="text-xs text-neutral-400 font-mono mt-0.5">{user.email}</p>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-neutral-100 rounded-full text-neutral-500 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+    <div className="flex-1 flex flex-col p-8 bg-white m-8 rounded-[2rem] border border-neutral-100 shadow-sm">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <Link href="/admin" className="text-[10px] font-black uppercase tracking-widest text-neutral-400 hover:text-neutral-600 inline-flex items-center gap-1 mb-3">
+            ← Volver a administración
+          </Link>
+          <h2 className="text-3xl font-black text-neutral-800">{user.firstName} {user.lastName}</h2>
+          <p className="text-xs text-neutral-400 font-mono mt-1">{user.email}</p>
         </div>
+        <UserStatusBadge user={user} />
+      </div>
 
-        <div className="p-6 overflow-y-auto space-y-8">
-          <div>
-            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Roles</span>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {ASSIGNABLE_ROLES.map((slug) => {
-                const active = userRoleSlugs.includes(slug);
-                const lockedSelfAdmin = slug === "admin" && active && isSelf;
-                const disabled = roleMutation.isPending || lockedSelfAdmin;
-                return (
-                  <button
-                    key={slug}
-                    disabled={disabled}
-                    onClick={() => roleMutation.mutate({ action: active ? "revoke" : "assign", roleSlug: slug })}
-                    title={lockedSelfAdmin ? "No puedes quitarte tu propio rol admin" : undefined}
-                    className={cn(
-                      "text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border transition-all disabled:opacity-40 disabled:cursor-not-allowed",
-                      active ? ROLE_META[slug].className : "text-neutral-400 bg-white border-neutral-200 hover:bg-neutral-50"
-                    )}
-                  >
-                    {active ? "✓ " : "+ "}{ROLE_META[slug].label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {isSeller && (
-            <div>
-              <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Comisión de plataforma</span>
-              <div className="mt-3 flex items-center gap-2">
-                <div className="flex items-center gap-1 bg-white border border-neutral-200 rounded-xl px-3 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.1}
-                    value={commissionInput}
-                    onChange={(e) => setCommissionInput(e.target.value)}
-                    className="w-16 outline-none text-xs font-bold text-neutral-700 text-right"
-                  />
-                  <span className="text-xs font-bold text-neutral-400">%</span>
-                </div>
+      <div className="space-y-10">
+        <div>
+          <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Roles</span>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {ASSIGNABLE_ROLES.map((slug) => {
+              const active = userRoleSlugs.includes(slug);
+              const lockedSelfAdmin = slug === "admin" && active && isSelf;
+              const disabled = roleMutation.isPending || lockedSelfAdmin;
+              return (
                 <button
-                  onClick={() => commissionMutation.mutate(Number(commissionInput))}
-                  disabled={commissionMutation.isPending || commissionInput.trim() === ""}
-                  className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-cyan-200 text-cyan-600 bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  key={slug}
+                  disabled={disabled}
+                  onClick={() => roleMutation.mutate({ action: active ? "revoke" : "assign", roleSlug: slug })}
+                  title={lockedSelfAdmin ? "No puedes quitarte tu propio rol admin" : undefined}
+                  className={cn(
+                    "text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border transition-all disabled:opacity-40 disabled:cursor-not-allowed",
+                    active ? ROLE_META[slug].className : "text-neutral-400 bg-white border-neutral-200 hover:bg-neutral-50"
+                  )}
                 >
-                  {commissionMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Guardar"}
+                  {active ? "✓ " : "+ "}{ROLE_META[slug].label}
                 </button>
-                {customCommissionRate !== null && (
+              );
+            })}
+          </div>
+        </div>
+
+        {isSeller && (
+          <div>
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Comisión de plataforma (general)</span>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="flex items-center gap-1 bg-white border border-neutral-200 rounded-xl px-3 py-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  value={effectiveCommissionInput}
+                  onChange={(e) => setCommissionInput(e.target.value)}
+                  className="w-16 outline-none text-xs font-bold text-neutral-700 text-right"
+                />
+                <span className="text-xs font-bold text-neutral-400">%</span>
+              </div>
+              <button
+                onClick={() => commissionMutation.mutate(Number(effectiveCommissionInput))}
+                disabled={commissionMutation.isPending || effectiveCommissionInput.trim() === ""}
+                className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-cyan-200 text-cyan-600 bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {commissionMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Guardar"}
+              </button>
+              {customCommissionRate !== null && (
+                <button
+                  onClick={() => { setCommissionInput(String(defaultCommissionRate)); commissionMutation.mutate(null); }}
+                  disabled={commissionMutation.isPending}
+                  className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest px-3 py-2 hover:text-neutral-600 disabled:opacity-50"
+                >
+                  Restablecer
+                </button>
+              )}
+            </div>
+            <p className="mt-2 text-[11px] text-neutral-400">
+              {customCommissionRate !== null
+                ? "Valor personalizado para este vendedor."
+                : `Usando el valor por defecto de la plataforma (${defaultCommissionRate}%).`}
+            </p>
+          </div>
+        )}
+
+        {isSeller && (
+          <SellerProductCommissionsTable
+            userId={userId}
+            sellerCommissionRate={customCommissionRate}
+            defaultCommissionRate={defaultCommissionRate}
+          />
+        )}
+
+        <div>
+          <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Estado de la cuenta</span>
+          <div className="mt-3 flex items-center gap-3">
+            {isSelf && <span className="text-[10px] text-neutral-400 italic">(tu propia cuenta)</span>}
+          </div>
+
+          {!isSelf && (
+            <div className="mt-4 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {user.isActive && !user.isBanned && (
+                  <>
+                    <button
+                      onClick={() => setPendingStatusAction("suspend")}
+                      className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-amber-200 text-amber-600 bg-amber-50 hover:bg-amber-100 transition-colors"
+                    >
+                      Suspender
+                    </button>
+                    <button
+                      onClick={() => setPendingStatusAction("ban")}
+                      className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                    >
+                      Banear
+                    </button>
+                  </>
+                )}
+                {(!user.isActive || user.isBanned) && (
                   <button
-                    onClick={() => { setCommissionInput(String(defaultCommissionRate)); commissionMutation.mutate(null); }}
-                    disabled={commissionMutation.isPending}
-                    className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest px-3 py-2 hover:text-neutral-600 disabled:opacity-50"
+                    onClick={() => statusMutation.mutate({ action: "activate" })}
+                    disabled={statusMutation.isPending}
+                    className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-emerald-200 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50"
                   >
-                    Restablecer
+                    {statusMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Reactivar"}
                   </button>
                 )}
               </div>
-              <p className="mt-2 text-[11px] text-neutral-400">
-                {customCommissionRate !== null
-                  ? "Valor personalizado para este vendedor."
-                  : `Usando el valor por defecto de la plataforma (${defaultCommissionRate}%).`}
-              </p>
-            </div>
-          )}
 
-          {isSeller && (
-            <div>
-              <SellerProductCommissionsSection userId={user.id} defaultCommissionRate={defaultCommissionRate} />
-            </div>
-          )}
-
-          <div>
-            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Estado de la cuenta</span>
-            <div className="mt-3 flex items-center gap-3">
-              <UserStatusBadge user={user} />
-              {isSelf && <span className="text-[10px] text-neutral-400 italic">(tu propia cuenta)</span>}
-            </div>
-
-            {!isSelf && (
-              <div className="mt-4 space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  {user.isActive && !user.isBanned && (
-                    <>
-                      <button
-                        onClick={() => setPendingStatusAction("suspend")}
-                        className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-amber-200 text-amber-600 bg-amber-50 hover:bg-amber-100 transition-colors"
-                      >
-                        Suspender
-                      </button>
-                      <button
-                        onClick={() => setPendingStatusAction("ban")}
-                        className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
-                      >
-                        Banear
-                      </button>
-                    </>
-                  )}
-                  {(!user.isActive || user.isBanned) && (
+              {pendingStatusAction && (
+                <div className="bg-neutral-50 rounded-2xl p-4 border border-neutral-100 space-y-3 max-w-md">
+                  <textarea
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder={`Motivo (opcional) para ${pendingStatusAction === "suspend" ? "suspender" : "banear"}...`}
+                    className="w-full text-xs text-neutral-700 bg-white border border-neutral-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-cyan-100 resize-none"
+                    rows={2}
+                  />
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => statusMutation.mutate({ action: "activate" })}
+                      onClick={() => statusMutation.mutate({ action: pendingStatusAction, reason: reason.trim() || undefined })}
                       disabled={statusMutation.isPending}
-                      className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-emerald-200 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                      className="bg-red-600 text-white px-6 py-2 rounded-full font-black uppercase tracking-widest text-[11px] disabled:opacity-50"
                     >
-                      {statusMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Reactivar"}
+                      {statusMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : `Confirmar ${pendingStatusAction === "suspend" ? "suspensión" : "baneo"}`}
                     </button>
-                  )}
-                </div>
-
-                {pendingStatusAction && (
-                  <div className="bg-neutral-50 rounded-2xl p-4 border border-neutral-100 space-y-3">
-                    <textarea
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value)}
-                      placeholder={`Motivo (opcional) para ${pendingStatusAction === "suspend" ? "suspender" : "banear"}...`}
-                      className="w-full text-xs text-neutral-700 bg-white border border-neutral-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-cyan-100 resize-none"
-                      rows={2}
-                    />
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => statusMutation.mutate({ action: pendingStatusAction, reason: reason.trim() || undefined })}
-                        disabled={statusMutation.isPending}
-                        className="bg-red-600 text-white px-6 py-2 rounded-full font-black uppercase tracking-widest text-[11px] disabled:opacity-50"
-                      >
-                        {statusMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : `Confirmar ${pendingStatusAction === "suspend" ? "suspensión" : "baneo"}`}
-                      </button>
-                      <button
-                        onClick={() => { setPendingStatusAction(null); setReason(""); }}
-                        className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest px-4 py-2"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => { setPendingStatusAction(null); setReason(""); }}
+                      className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest px-4 py-2"
+                    >
+                      Cancelar
+                    </button>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {user.bannedReason && (
-            <p className="text-xs text-neutral-400 italic">Motivo registrado: {user.bannedReason}</p>
+                </div>
+              )}
+            </div>
           )}
         </div>
+
+        {user.bannedReason && (
+          <p className="text-xs text-neutral-400 italic">Motivo registrado: {user.bannedReason}</p>
+        )}
       </div>
     </div>
   );
@@ -950,7 +1079,6 @@ function UsersPanel() {
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const limit = 20;
 
   let isActive: string | undefined;
@@ -973,9 +1101,6 @@ function UsersPanel() {
     setPage(1);
     setEmail(emailInput.trim());
   };
-
-  // Mantiene el modal sincronizado con la lista tras invalidar la query (ej. después de asignar un rol)
-  const liveSelectedUser = selectedUser ? users.find((u) => u.id === selectedUser.id) || selectedUser : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -1084,12 +1209,12 @@ function UsersPanel() {
                   <td className="p-4"><UserStatusBadge user={u} /></td>
                   <td className="p-4 text-xs font-mono text-neutral-500 whitespace-nowrap">{new Date(u.createdAt).toLocaleDateString("es-CO")}</td>
                   <td className="p-4 text-right">
-                    <button
-                      onClick={() => setSelectedUser(u)}
+                    <Link
+                      href={`/admin/users/${u.id}`}
                       className="text-[10px] font-black uppercase tracking-widest text-cyan-600 hover:text-cyan-700"
                     >
                       Gestionar
-                    </button>
+                    </Link>
                   </td>
                 </tr>
               ))
@@ -1119,14 +1244,6 @@ function UsersPanel() {
           </button>
         </div>
       </div>
-
-      {liveSelectedUser && (
-        <UserManageModal
-          user={liveSelectedUser}
-          onClose={() => setSelectedUser(null)}
-          defaultCommissionRate={data?.defaultCommissionRate ?? 5}
-        />
-      )}
     </div>
   );
 }

@@ -5,6 +5,10 @@ export const adminService = {
     const { data } = await apiClient.get('/admin/users', { params });
     return data;
   },
+  async getUser(userId: string) {
+    const { data } = await apiClient.get(`/admin/users/${userId}`);
+    return data;
+  },
   async updateUserStatus(userId: string, action: 'activate' | 'suspend' | 'ban', reason?: string) {
     const { data } = await apiClient.patch(`/admin/users/${userId}/status`, { action, reason });
     return data;
