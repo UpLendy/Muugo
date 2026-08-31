@@ -23,7 +23,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     if (!hasHydrated) return;
 
     // Definimos las rutas públicas que no requieren autenticación
-    const publicPaths = ['/login', '/register'];
+    const publicPaths = ['/login', '/register', '/bienvenida'];
     const isPublicPath = publicPaths.includes(pathname);
 
     if (!isAuthenticated && !isPublicPath) {
@@ -38,12 +38,14 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }, [hasHydrated, isAuthenticated, isAdmin, pathname, router]);
 
   // Mientras resolvemos (hidratación pendiente, no autenticado en ruta privada,
-  // o usuario sin rol admin en una ruta de admin), spinner
-  const publicPaths = ['/login', '/register'];
+  // o usuario sin rol admin en una ruta de admin), spinner. Las rutas públicas
+  // se renderizan de inmediato (incluso antes de hidratar) para que tengan
+  // contenido real en el HTML servido y Google pueda indexarlas.
+  const publicPaths = ['/login', '/register', '/bienvenida'];
   const isPublicPath = publicPaths.includes(pathname);
   const isBlockedAdminPath = isAuthenticated && adminPaths.includes(pathname) && !isAdmin;
 
-  if (!hasHydrated || (!isAuthenticated && !isPublicPath) || isBlockedAdminPath) {
+  if (!isPublicPath && (!hasHydrated || !isAuthenticated || isBlockedAdminPath)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-50">
          <div className="w-12 h-12 border-4 border-neutral-200 border-t-[#eb0028] rounded-full animate-spin" />

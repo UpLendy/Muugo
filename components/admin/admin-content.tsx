@@ -29,7 +29,7 @@ function cn(...inputs: ClassValue[]) {
 const money = (cents: number) => `$ ${new Intl.NumberFormat('es-CO').format(cents / 100)}`;
 
 const adminTabs = [
-  "Usuarios", "Saldo", "Logs de pagos"
+  "Usuarios", "Saldo", "Comisiones", "Logs de pagos"
 ];
 
 const WEBHOOK_SOURCES = [
@@ -263,6 +263,181 @@ const TOPUP_STATUS_META: Record<string, { label: string; className: string; icon
   expired:    { label: "Expirado",   className: "text-neutral-500 bg-neutral-100 border-neutral-200", icon: Clock },
   failed:     { label: "Fallido",    className: "text-red-600 bg-red-50 border-red-100",             icon: XCircle },
 };
+
+function ProductCommissionRow({ product, defaultCommissionRate, onSaved }: { product: any; defaultCommissionRate: number; onSaved: () => void }) {
+  const override: number | null = product.platformFeeRateOverride ?? null;
+  const [input, setInput] = useState(String(override ?? ""));
+
+  const mutation = useMutation({
+    mutationFn: (rate: number | null) => adminService.updateProductCommissionRate(product.id, rate),
+    onSuccess: onSaved,
+  });
+
+  const effectiveLabel = override !== null
+    ? "Personalizada"
+    : "Vendedor / global";
+
+  return (
+    <tr className="border-b border-neutral-50 hover:bg-neutral-50 transition-colors">
+      <td className="p-4">
+        <div className="flex items-center gap-3">
+          {product.imageUrl && (
+            <img src={product.imageUrl} alt={product.name} className="w-8 h-8 object-contain rounded-lg bg-white border border-neutral-100 p-0.5" />
+          )}
+          <span className="text-xs font-bold text-neutral-700">{product.name}</span>
+        </div>
+      </td>
+      <td className="p-4 text-xs text-neutral-400">{product.productType}</td>
+      <td className="p-4">
+        <span className={cn(
+          "text-[10px] font-black uppercase px-2 py-1 rounded-full border",
+          override !== null ? "text-cyan-600 bg-cyan-50 border-cyan-100" : "text-neutral-400 bg-neutral-100 border-neutral-200"
+        )}>
+          {effectiveLabel}
+        </span>
+      </td>
+      <td className="p-4">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-white border border-neutral-200 rounded-xl px-3 py-2">
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.1}
+              value={input}
+              placeholder={String(defaultCommissionRate)}
+              onChange={(e) => setInput(e.target.value)}
+              className="w-16 outline-none text-xs font-bold text-neutral-700 text-right"
+            />
+            <span className="text-xs font-bold text-neutral-400">%</span>
+          </div>
+          <button
+            onClick={() => mutation.mutate(input.trim() === "" ? null : Number(input))}
+            disabled={mutation.isPending}
+            className="text-[11px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-cyan-200 text-cyan-600 bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {mutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Guardar"}
+          </button>
+          {override !== null && (
+            <button
+              onClick={() => { setInput(""); mutation.mutate(null); }}
+              disabled={mutation.isPending}
+              className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest px-2 py-2 hover:text-neutral-600 disabled:opacity-50"
+            >
+              Restablecer
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function ProductCommissionPanel() {
+  const [nameInput, setNameInput] = useState("");
+  const [name, setName] = useState("");
+  const [page, setPage] = useState(1);
+  const limit = 20;
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ["adminCatalogProducts", name, page],
+    queryFn: () => adminService.getCatalogProducts({ name: name || undefined, page, limit }),
+    placeholderData: (prev: any) => prev,
+  });
+
+  const products: any[] = data?.items || [];
+  const total: number = data?.total ?? 0;
+  const defaultCommissionRate: number = data?.defaultCommissionRate ?? 5;
+
+  const applySearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPage(1);
+    setName(nameInput.trim());
+  };
+
+  const onSaved = () => queryClient.invalidateQueries({ queryKey: ["adminCatalogProducts"] });
+
+  return (
+    <div className="flex flex-col h-full">
+      <form onSubmit={applySearch} className="bg-neutral-50 p-6 rounded-[2rem] border border-neutral-100 flex flex-wrap items-end gap-4 mb-8">
+        <div className="space-y-1 flex-1 min-w-[220px]">
+          <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1">Buscar producto</span>
+          <div className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-2.5">
+            <Search className="w-4 h-4 text-neutral-300 flex-shrink-0" />
+            <input
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              placeholder="Netflix, Disney+..."
+              className="w-full outline-none text-xs font-bold text-neutral-700 placeholder:text-neutral-300 placeholder:font-normal"
+            />
+          </div>
+        </div>
+
+        <button type="submit" className="bg-[#00d2ff] text-white px-8 py-3 rounded-full font-black uppercase tracking-widest text-xs shadow-lg shadow-cyan-100 hover:scale-105 transition-all">
+          Buscar
+        </button>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="p-3 bg-neutral-100 text-neutral-500 rounded-xl hover:bg-neutral-200 transition-colors"
+          title="Refrescar"
+        >
+          {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+        </button>
+      </form>
+
+      <p className="text-xs text-neutral-400 mb-4 -mt-4">
+        Si un producto no tiene comisión personalizada, se usa la comisión del vendedor o, en su defecto, el {defaultCommissionRate}% global.
+      </p>
+
+      <div className="flex-1 overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="border-b border-neutral-100">
+              {["Producto", "Categoría", "Comisión", "Ajustar %"].map((head) => (
+                <th key={head} className="p-4 text-left text-xs font-black text-neutral-400 uppercase tracking-widest">{head}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={4} className="p-20 text-center"><Loader2 className="w-6 h-6 animate-spin text-neutral-300 mx-auto" /></td></tr>
+            ) : products.length === 0 ? (
+              <tr><td colSpan={4} className="p-20 text-center text-neutral-300 font-medium italic">No hay productos con este filtro</td></tr>
+            ) : (
+              products.map((p) => (
+                <ProductCommissionRow key={p.id} product={p} defaultCommissionRate={defaultCommissionRate} onSaved={onSaved} />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-between pt-6 mt-4 border-t border-neutral-100">
+        <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
+          Página {page} · {total} producto{total !== 1 ? "s" : ""} en total
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="px-4 py-2 rounded-xl bg-neutral-100 text-neutral-600 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-200 transition-colors"
+          >
+            Anterior
+          </button>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page * limit >= total}
+            className="px-4 py-2 rounded-xl bg-neutral-100 text-neutral-600 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-200 transition-colors"
+          >
+            Siguiente
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function SaldoPanel() {
   const [status, setStatus] = useState("");
@@ -886,6 +1061,8 @@ export function AdminContent() {
         <WebhookLogsPanel />
       ) : activeTab === "Saldo" ? (
         <SaldoPanel />
+      ) : activeTab === "Comisiones" ? (
+        <ProductCommissionPanel />
       ) : (
         <UsersPanel />
       )}

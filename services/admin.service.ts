@@ -21,4 +21,12 @@ export const adminService = {
     const { data } = await apiClient.get('/admin/audit-logs', { params });
     return data;
   },
+  async getCatalogProducts(params?: { name?: string; categoryId?: string; page?: number; limit?: number }) {
+    const { data } = await apiClient.get('/admin/catalog-products', { params });
+    return data;
+  },
+  async updateProductCommissionRate(productId: number, platformFeeRateOverride: number | null) {
+    const { data } = await apiClient.patch(`/admin/catalog-products/${productId}/platform-fee-rate`, { platformFeeRateOverride });
+    return data;
+  },
 };

@@ -16,6 +16,7 @@ const museoSansFallback = Montserrat({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://muugo.co"),
   title: "Muugo",
   description: "Muugo — recarga, cobra y vende en un solo lugar.",
   keywords: ["Muugo"],
