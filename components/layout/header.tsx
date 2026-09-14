@@ -147,14 +147,18 @@ export function Header({ showBalances = false }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-3 sm:gap-6 order-2">
-        <div className="flex-col items-end hidden md:flex">
-          <span className="text-sm font-medium text-neutral-900">Punto de venta</span>
-          <span className="text-xs text-neutral-500 font-mono tracking-wider">
-            ID: {store?.id ? store.id.slice(0, 6).toUpperCase() : 'PENDIENTE'}
-          </span>
-        </div>
+        {store?.id && (
+          <>
+            <div className="flex-col items-end hidden md:flex">
+              <span className="text-sm font-medium text-neutral-900">Punto de venta</span>
+              <span className="text-xs text-neutral-500 font-mono tracking-wider">
+                ID: {store.id.slice(0, 6).toUpperCase()}
+              </span>
+            </div>
 
-        <div className="h-10 w-px bg-neutral-100 hidden md:block" />
+            <div className="h-10 w-px bg-neutral-100 hidden md:block" />
+          </>
+        )}
 
         <div className="relative" ref={notifRef}>
           <button

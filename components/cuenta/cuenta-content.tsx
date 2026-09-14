@@ -301,9 +301,11 @@ export function CuentaContent() {
           <div className="flex-1 space-y-1 relative z-10 mt-2 sm:mt-0">
             <h3 className="text-3xl font-black text-neutral-800">{user.firstName} {user.lastName}</h3>
             <p className="text-neutral-400 font-medium">{user.email}</p>
-            <p className="text-neutral-400 font-mono text-xs tracking-widest mt-2">
-              ID: {store?.id ? store.id.slice(0, 6).toUpperCase() : 'PENDIENTE'}
-            </p>
+            {store?.id && (
+              <p className="text-neutral-400 font-mono text-xs tracking-widest mt-2">
+                ID: {store.id.slice(0, 6).toUpperCase()}
+              </p>
+            )}
           </div>
 
           <div className="relative w-20 h-20 flex items-center justify-center z-10 shrink-0">
