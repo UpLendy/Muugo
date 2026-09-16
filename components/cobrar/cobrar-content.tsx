@@ -10,7 +10,6 @@ import {
   CreditCard,
   Loader2,
   AlertCircle,
-  MessageCircle
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -27,7 +26,7 @@ const paymentMethods = [
   { id: "link", label: "Link de pago", icon: Share2 },
   { id: "qr", label: "QR", icon: QrCode },
   { id: "bancolombia", label: "Bancolombia", logo: "bancolombia", barLabel: "Escanear QR" },
-  { id: "whatsapp", label: "Pagos Por WhatsApp", icon: MessageCircle },
+  // "whatsapp" deshabilitado temporalmente: falta terminar de configurar la cuenta y el PDF en producción.
 ];
 
 export function CobrarContent() {
